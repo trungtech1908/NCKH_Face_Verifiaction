@@ -1,0 +1,3 @@
+[submodule "external/retinaface"]
+	path = external/retinaface
+	url = https://github.com/biubug6/Pytorch_Retinaface.git
