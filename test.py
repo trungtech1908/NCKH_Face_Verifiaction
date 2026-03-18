@@ -1,11 +1,11 @@
 import cv2
 import time
 import numpy as np
-from insightface.app import FaceAnalysis
 from qdrant_client import QdrantClient
 from dotenv import load_dotenv
 import os
 from collections import Counter
+from insightface.app import FaceAnalysis
 
 # ================== LOAD ENV ==================
 load_dotenv()
@@ -20,17 +20,23 @@ client = QdrantClient(
 
 COLLECTION_NAME = "NCKH_Face_Verification"
 
-# ================== INSIGHTFACE ==================
+# ================== DETECT + EMBEDDING ==================
 app = FaceAnalysis(name="buffalo_l")
-app.prepare(ctx_id=0)  # GPU, nếu lỗi thì dùng -1
+app.prepare(ctx_id=0)
 
-# ================== WEBCAM ==================
-cap = cv2.VideoCapture(0)
+# ================== CAMERA ==================
+cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+
+if not cap.isOpened():
+    print("Cannot open camera")
+    exit()
 
 # ================== BIẾN ==================
 prev_time = 0
 last_embedding_time = 0
-current_name = "Unknown"
+
+# lưu kết quả cho từng face (theo index)
+face_results = {}
 
 # ================== LOOP ==================
 while True:
@@ -38,30 +44,28 @@ while True:
     if not ret:
         break
 
-    # resize tăng FPS
     frame = cv2.resize(frame, (640, 480))
 
-    # ===== detect face =====
     faces = app.get(frame)
 
-    for face in faces:
-        x1, y1, x2, y2 = map(int, face.bbox)
+    # ===== 3s mới update embedding =====
+    if time.time() - last_embedding_time > 3:
+        face_results = {}
 
-        # ===== 3s mới embedding + search =====
-        if time.time() - last_embedding_time > 3:
+        for i, face in enumerate(faces):
             embedding = face.embedding
             embedding = embedding / np.linalg.norm(embedding)
             query_vector = embedding.tolist()
 
-            # ===== query Qdrant =====
             results = client.query_points(
                 collection_name=COLLECTION_NAME,
                 query=query_vector,
                 limit=15
             )
 
+            name = "Unknown"
+
             if results.points:
-                # lọc theo threshold
                 valid_points = [p for p in results.points if p.score > 0.5]
 
                 if valid_points:
@@ -73,21 +77,21 @@ while True:
                     counter = Counter(usernames)
                     most_common, count = counter.most_common(1)[0]
 
-                    # optional: điều kiện chắc chắn hơn
                     if count >= 2:
-                        current_name = most_common
-                    else:
-                        current_name = "Unknown"
-                else:
-                    current_name = "Unknown"
-            else:
-                current_name = "Unknown"
+                        name = most_common
 
-            last_embedding_time = time.time()
+            face_results[i] = name
 
-        # ===== vẽ bbox + label =====
+        last_embedding_time = time.time()
+
+    # ===== VẼ =====
+    for i, face in enumerate(faces):
+        x1, y1, x2, y2 = map(int, face.bbox)
+
+        name = face_results.get(i, "Unknown")
+
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(frame, current_name, (x1, y1 - 10),
+        cv2.putText(frame, name, (x1, y1 - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
     # ===== FPS =====
@@ -98,13 +102,10 @@ while True:
     cv2.putText(frame, f"FPS: {int(fps)}", (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-    # ===== SHOW =====
     cv2.imshow("Face Recognition", frame)
 
-    # ESC để thoát
     if cv2.waitKey(1) & 0xFF == 27:
         break
 
-# ================== CLEAN ==================
 cap.release()
 cv2.destroyAllWindows()
