@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — FaceAuth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#050a0f;--surface:#080e16;--surface2:#0c1a28;--border:#0d3a5c;
+  --accent:#00d4ff;--accent2:#00ff88;--danger:#ff3366;
+  --text:#c8dde8;--muted:#4a7a8a;
+  --font-mono:'Share Tech Mono',monospace;--font-main:'Rajdhani',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-main);
+  min-height:100vh;padding:2rem}
+body::before{content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(0,212,255,.02) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,.02) 1px,transparent 1px);
+  background-size:40px 40px;pointer-events:none}
+
+header{display:flex;justify-content:space-between;align-items:center;
+  max-width:900px;margin:0 auto 2.5rem;padding-bottom:1rem;
+  border-bottom:1px solid var(--border)}
+.logo{font-family:var(--font-mono);font-size:1.2rem;color:var(--accent);letter-spacing:.2em}
+.header-right{display:flex;align-items:center;gap:1.5rem}
+.username-badge{font-family:var(--font-mono);font-size:.75rem;color:var(--muted)}
+.username-badge span{color:var(--accent2)}
+.btn-logout{font-family:var(--font-mono);font-size:.7rem;letter-spacing:.1em;
+  text-transform:uppercase;background:transparent;border:1px solid var(--danger);
+  color:var(--danger);padding:.4rem 1rem;cursor:pointer;transition:all .2s}
+.btn-logout:hover{background:rgba(255,51,102,.1)}
+
+.main{max-width:900px;margin:0 auto}
+h2{font-size:1.5rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.25rem}
+.section-sub{font-family:var(--font-mono);font-size:.7rem;color:var(--muted);
+  margin-bottom:1.5rem;letter-spacing:.05em}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-bottom:2rem}
+.card{background:var(--surface);border:1px solid var(--border);padding:1.5rem;
+  clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+.card-label{font-family:var(--font-mono);font-size:.65rem;color:var(--muted);
+  letter-spacing:.15em;text-transform:uppercase;margin-bottom:.5rem}
+.card-value{font-size:1.1rem;font-weight:600;color:var(--text);word-break:break-all}
+.card-value.highlight{color:var(--accent2)}
+
+.status-card{border-color:var(--accent2)}
+.status-indicator{display:flex;align-items:center;gap:.5rem}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent2);
+  animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+.info-table{width:100%;border-collapse:collapse}
+.info-table tr{border-bottom:1px solid var(--border)}
+.info-table tr:last-child{border:none}
+.info-table td{padding:.75rem 0;font-size:.9rem}
+.info-table td:first-child{color:var(--muted);font-family:var(--font-mono);font-size:.7rem;
+  letter-spacing:.1em;text-transform:uppercase;width:35%;padding-right:1rem}
+
+.spinner{display:inline-block;width:12px;height:12px;
+  border:2px solid rgba(0,212,255,.3);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">FACEAUTH</div>
+  <div class="header-right">
+    <div class="username-badge">LOGGED IN AS <span id="hdr-username">...</span></div>
+    <button class="btn-logout" onclick="logout()">Đăng Xuất</button>
+  </div>
+</header>
+
+<div class="main">
+  <h2>Dashboard</h2>
+  <div class="section-sub" id="sub-ts">// LOADING...</div>
+
+  <div class="cards">
+    <div class="card status-card">
+      <div class="card-label">Trạng thái</div>
+      <div class="status-indicator">
+        <div class="dot"></div>
+        <div class="card-value highlight">ĐÃ XÁC THỰC</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Username</div>
+      <div class="card-value" id="d-username"><span class="spinner"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Email</div>
+      <div class="card-value" id="d-email"><span class="spinner"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-label">User ID</div>
+      <div class="card-value" id="d-userid" style="font-family:var(--font-mono);font-size:.75rem">
+        <span class="spinner"></span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Ngày đăng ký</div>
+      <div class="card-value" id="d-created"><span class="spinner"></span></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Phương thức xác thực</div>
+      <div class="card-value highlight">FACE + PASSWORD</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function logout(){
+  localStorage.removeItem('token'); localStorage.removeItem('user')
+  location.href='/'
+}
+
+async function loadUser(){
+  const token = localStorage.getItem('token')
+  if (!token) { location.href='/login'; return }
+
+  // Optimistic from localStorage
+  const cached = JSON.parse(localStorage.getItem('user')||'{}')
+  if (cached.username) {
+    document.getElementById('hdr-username').textContent = cached.username
+    document.getElementById('d-username').textContent = cached.username
+    document.getElementById('d-email').textContent = cached.email||'—'
+    document.getElementById('d-userid').textContent = cached.user_id||'—'
+  }
+
+  document.getElementById('sub-ts').textContent =
+    `// THỜI GIAN: ${new Date().toLocaleString('vi-VN')} — SESSION ACTIVE`
+
+  try {
+    const res = await fetch('/api/me',{headers:{'Authorization':'Bearer '+token}})
+    if (!res.ok) { logout(); return }
+    const data = await res.json()
+    document.getElementById('hdr-username').textContent = data.username
+    document.getElementById('d-username').textContent = data.username
+    document.getElementById('d-email').textContent = data.email
+    document.getElementById('d-userid').textContent = data.user_id
+    document.getElementById('d-created').textContent =
+      data.created_at ? new Date(data.created_at).toLocaleString('vi-VN') : '—'
+  } catch(e) {
+    document.getElementById('d-created').textContent = '—'
+  }
+}
+
+loadUser()
+</script>
+</body>
+</html>

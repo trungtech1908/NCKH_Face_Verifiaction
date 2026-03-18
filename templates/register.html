@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Đăng Ký — FaceAuth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#050a0f;--surface:#080e16;--surface2:#0c1a28;--border:#0d3a5c;
+  --accent:#00d4ff;--accent2:#00ff88;--danger:#ff3366;--warn:#ffaa00;
+  --text:#c8dde8;--muted:#4a7a8a;
+  --font-mono:'Share Tech Mono',monospace;--font-main:'Rajdhani',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-main);
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  padding:1rem;}
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(0,212,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,.025) 1px,transparent 1px);
+  background-size:40px 40px;pointer-events:none;
+}
+
+.container{width:100%;max-width:900px;z-index:1}
+.back{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);
+  text-decoration:none;display:inline-flex;align-items:center;gap:.5rem;
+  margin-bottom:1.5rem;transition:color .2s;}
+.back:hover{color:var(--accent)}
+
+h1{font-size:2rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.25rem}
+.subtitle{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);
+  letter-spacing:.1em;margin-bottom:2rem}
+
+/* Steps indicator */
+.steps-nav{display:flex;gap:0;margin-bottom:2.5rem;position:relative}
+.steps-nav::before{content:'';position:absolute;top:50%;left:0;right:0;
+  height:1px;background:var(--border);z-index:0}
+.step-item{flex:1;text-align:center;z-index:1;padding:.5rem}
+.step-dot{width:32px;height:32px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto .4rem;font-family:var(--font-mono);font-size:.75rem;
+  background:var(--surface2);border:1px solid var(--border);
+  transition:all .3s;}
+.step-item.active .step-dot{background:var(--accent);color:var(--bg);border-color:var(--accent);
+  box-shadow:0 0 20px rgba(0,212,255,.5)}
+.step-item.done .step-dot{background:var(--accent2);color:var(--bg);border-color:var(--accent2)}
+.step-label{font-size:.7rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.step-item.active .step-label{color:var(--accent)}
+.step-item.done .step-label{color:var(--accent2)}
+
+/* Panels */
+.panel{background:var(--surface);border:1px solid var(--border);padding:2rem;
+  clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px))}
+.panel-title{font-family:var(--font-mono);font-size:.7rem;color:var(--muted);
+  letter-spacing:.15em;text-transform:uppercase;margin-bottom:1.5rem;
+  padding-bottom:.75rem;border-bottom:1px solid var(--border)}
+
+/* Form */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+.form-group{display:flex;flex-direction:column;gap:.4rem}
+.form-group.full{grid-column:1/-1}
+label{font-size:.8rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted)}
+input{background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-family:var(--font-main);font-size:1rem;
+  padding:.75rem 1rem;outline:none;transition:border-color .2s,box-shadow .2s;
+  width:100%}
+input:focus{border-color:var(--accent);box-shadow:0 0 15px rgba(0,212,255,.15)}
+input::placeholder{color:var(--muted)}
+
+.err{font-size:.8rem;color:var(--danger);margin-top:.25rem;display:none}
+.err.show{display:block}
+
+/* Face capture area */
+.face-area{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
+.camera-wrap{position:relative}
+.cam-frame{
+  position:relative;width:100%;aspect-ratio:4/3;
+  background:#000;border:1px solid var(--border);overflow:hidden;
+}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+canvas{pointer-events:none}
+
+/* Scan overlay */
+.scan-overlay{
+  position:absolute;inset:0;pointer-events:none;z-index:10;
+}
+.scan-overlay svg{width:100%;height:100%}
+
+/* Corner brackets */
+.corner{position:absolute;width:20px;height:20px;pointer-events:none}
+.corner-tl{top:8px;left:8px;border-top:2px solid var(--accent);border-left:2px solid var(--accent)}
+.corner-tr{top:8px;right:8px;border-top:2px solid var(--accent);border-right:2px solid var(--accent)}
+.corner-bl{bottom:8px;left:8px;border-bottom:2px solid var(--accent);border-left:2px solid var(--accent)}
+.corner-br{bottom:8px;right:8px;border-bottom:2px solid var(--accent);border-right:2px solid var(--accent)}
+
+/* Pose angles display */
+.pose-info{
+  position:absolute;bottom:8px;left:8px;right:8px;
+  font-family:var(--font-mono);font-size:.6rem;color:var(--accent);
+  background:rgba(5,10,15,.8);padding:.3rem .5rem;z-index:20;
+  display:none;
+}
+
+/* Right panel: instructions */
+.instr-panel{display:flex;flex-direction:column;gap:1rem}
+.current-instr{
+  background:var(--surface2);border:1px solid var(--border);
+  padding:1.25rem;border-left:3px solid var(--accent);
+}
+.instr-icon{font-size:2rem;margin-bottom:.5rem}
+.instr-text{font-size:1.1rem;font-weight:600;letter-spacing:.05em;color:var(--accent)}
+.instr-sub{font-family:var(--font-mono);font-size:.7rem;color:var(--muted);margin-top:.25rem}
+
+/* Hold progress */
+.hold-bar-wrap{margin-top:.75rem}
+.hold-label{font-family:var(--font-mono);font-size:.65rem;color:var(--muted);
+  display:flex;justify-content:space-between;margin-bottom:.3rem}
+.hold-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.hold-bar-fill{height:100%;background:var(--accent);transition:width .15s;width:0%}
+
+/* Steps checklist */
+.steps-list{display:flex;flex-direction:column;gap:.4rem}
+.step-row{display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;
+  background:var(--surface2);border:1px solid var(--border);
+  font-size:.85rem;font-weight:500;letter-spacing:.05em;transition:all .2s}
+.step-row.done{border-color:var(--accent2);color:var(--accent2)}
+.step-row.active{border-color:var(--accent);color:var(--accent);
+  box-shadow:0 0 10px rgba(0,212,255,.15)}
+.step-row.pending{color:var(--muted)}
+.step-row-icon{font-size:1rem}
+.step-row-check{margin-left:auto;font-family:var(--font-mono);font-size:.7rem}
+
+/* Message toast */
+.msg-box{
+  padding:.75rem 1rem;font-family:var(--font-mono);font-size:.75rem;
+  border:1px solid var(--border);letter-spacing:.05em;min-height:42px;
+  transition:all .2s;
+}
+.msg-box.ok   {border-color:var(--accent2);color:var(--accent2);background:rgba(0,255,136,.05)}
+.msg-box.warn {border-color:var(--warn);color:var(--warn);background:rgba(255,170,0,.05)}
+.msg-box.err  {border-color:var(--danger);color:var(--danger);background:rgba(255,51,102,.05)}
+.msg-box.info {border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.05)}
+
+/* Buttons */
+.btn{font-family:var(--font-main);font-size:.95rem;font-weight:700;
+  letter-spacing:.15em;text-transform:uppercase;padding:.8rem 2rem;
+  border:none;cursor:pointer;width:100%;transition:all .2s;
+  clip-path:polygon(6px 0%,100% 0%,calc(100% - 6px) 100%,0% 100%)}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover:not(:disabled){box-shadow:0 0 30px rgba(0,212,255,.5)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-success{background:var(--accent2);color:var(--bg)}
+
+/* Done overlay */
+.done-overlay{
+  display:none;position:absolute;inset:0;background:rgba(5,10,15,.95);
+  flex-direction:column;align-items:center;justify-content:center;
+  z-index:50;text-align:center;gap:1rem;
+}
+.done-overlay.show{display:flex}
+.done-icon{font-size:4rem;animation:popIn .4s ease}
+.done-title{font-size:1.5rem;font-weight:700;color:var(--accent2);letter-spacing:.1em}
+.done-sub{font-family:var(--font-mono);font-size:.75rem;color:var(--muted)}
+
+@keyframes popIn{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* Phase visibility */
+#phase-info{display:block}
+#phase-face{display:none}
+#phase-done{display:none}
+
+.spinner{display:inline-block;width:14px;height:14px;
+  border:2px solid rgba(0,212,255,.3);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .6s linear infinite;margin-right:.5rem;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="/" class="back">← Quay lại</a>
+  <h1>Đăng Ký Tài Khoản</h1>
+  <div class="subtitle">// FACE_AUTH_SYSTEM / REGISTRATION_MODULE</div>
+
+  <!-- Steps nav -->
+  <div class="steps-nav">
+    <div class="step-item active" id="nav-1">
+      <div class="step-dot">01</div>
+      <div class="step-label">Thông tin</div>
+    </div>
+    <div class="step-item" id="nav-2">
+      <div class="step-dot">02</div>
+      <div class="step-label">Khuôn mặt</div>
+    </div>
+    <div class="step-item" id="nav-3">
+      <div class="step-dot">03</div>
+      <div class="step-label">Hoàn tất</div>
+    </div>
+  </div>
+
+  <!-- PHASE 1: User info -->
+  <div id="phase-info">
+    <div class="panel">
+      <div class="panel-title">// NHẬP THÔNG TIN TÀI KHOẢN</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="username" placeholder="vd: nguyenvan_a" autocomplete="off">
+          <div class="err" id="err-username"></div>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="vd: email@example.com">
+          <div class="err" id="err-email"></div>
+        </div>
+        <div class="form-group">
+          <label>Mật khẩu</label>
+          <input type="password" id="password" placeholder="Tối thiểu 6 ký tự">
+          <div class="err" id="err-password"></div>
+        </div>
+        <div class="form-group">
+          <label>Xác nhận mật khẩu</label>
+          <input type="password" id="password2" placeholder="Nhập lại mật khẩu">
+          <div class="err" id="err-password2"></div>
+        </div>
+      </div>
+      <div class="msg-box" id="msg-info" style="margin-bottom:1rem;display:none"></div>
+      <button class="btn btn-primary" id="btn-next-info">Tiếp theo →</button>
+    </div>
+  </div>
+
+  <!-- PHASE 2: Face capture -->
+  <div id="phase-face">
+    <div class="panel">
+      <div class="panel-title">// ĐĂNG KÝ KHUÔN MẶT — FACE_CAPTURE_MODULE</div>
+      <div class="face-area">
+        <!-- Camera -->
+        <div class="camera-wrap">
+          <div class="cam-frame" id="cam-frame">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas"></canvas>
+            <div class="corner corner-tl"></div>
+            <div class="corner corner-tr"></div>
+            <div class="corner corner-bl"></div>
+            <div class="corner corner-br"></div>
+            <div class="pose-info" id="pose-info"></div>
+            <div class="done-overlay" id="done-overlay">
+              <div class="done-icon">✅</div>
+              <div class="done-title">CAPTURE COMPLETE</div>
+              <div class="done-sub" id="done-sub-text">Đang xử lý...</div>
+            </div>
+          </div>
+          <div class="msg-box info" id="msg-face" style="margin-top:.75rem">
+            Đang khởi động camera...
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="instr-panel">
+          <div class="current-instr" id="cur-instr">
+            <div class="instr-icon" id="instr-icon">⬜</div>
+            <div class="instr-text" id="instr-text">Nhìn thẳng vào camera</div>
+            <div class="instr-sub" id="instr-sub">Giữ nguyên trong 1.5 giây</div>
+            <div class="hold-bar-wrap">
+              <div class="hold-label">
+                <span>HOLD PROGRESS</span>
+                <span id="hold-pct">0%</span>
+              </div>
+              <div class="hold-bar"><div class="hold-bar-fill" id="hold-fill"></div></div>
+            </div>
+          </div>
+
+          <div class="steps-list" id="steps-list">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 3: Done -->
+  <div id="phase-done">
+    <div class="panel" style="text-align:center;padding:3rem 2rem">
+      <div style="font-size:4rem;margin-bottom:1rem">✅</div>
+      <div style="font-size:1.8rem;font-weight:700;color:var(--accent2);
+        letter-spacing:.1em;margin-bottom:.5rem">ĐĂNG KÝ THÀNH CÔNG</div>
+      <div id="done-username" style="font-family:var(--font-mono);
+        font-size:.9rem;color:var(--muted);margin-bottom:2rem"></div>
+      <a href="/dashboard" class="btn btn-success" style="display:inline-block;
+        text-decoration:none;width:auto;padding:.8rem 3rem">
+        Vào Dashboard →
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = ''
+let sessionId = null
+let captureInterval = null
+let sending = false
+const STEPS_DEF = [
+  {step:'FRONT',icon:'⬜',msg:'Nhìn thẳng vào camera'},
+  {step:'LEFT', icon:'⬅️',msg:'Quay mặt sang TRÁI'},
+  {step:'RIGHT',icon:'➡️',msg:'Quay mặt sang PHẢI'},
+  {step:'UP',   icon:'⬆️',msg:'Ngẩng mặt lên TRÊN'},
+  {step:'DOWN', icon:'⬇️',msg:'Cúi mặt xuống DƯỚI'},
+]
+
+// ── Phase 1: Info ────────────────────────────────────────────────────────
+document.getElementById('btn-next-info').addEventListener('click', async ()=>{
+  const username = document.getElementById('username').value.trim()
+  const email    = document.getElementById('email').value.trim()
+  const pwd      = document.getElementById('password').value
+  const pwd2     = document.getElementById('password2').value
+  let ok = true
+
+  const clearErr = id => { const e=document.getElementById(id); e.textContent=''; e.classList.remove('show') }
+  const showErr  = (id,msg) => { const e=document.getElementById(id); e.textContent=msg; e.classList.add('show'); ok=false }
+
+  clearErr('err-username'); clearErr('err-email')
+  clearErr('err-password'); clearErr('err-password2')
+  document.getElementById('msg-info').style.display='none'
+
+  if (!username) showErr('err-username','Vui lòng nhập username')
+  else if (username.length < 3) showErr('err-username','Username tối thiểu 3 ký tự')
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) showErr('err-email','Email không hợp lệ')
+  if (!pwd || pwd.length < 6) showErr('err-password','Mật khẩu tối thiểu 6 ký tự')
+  if (pwd !== pwd2) showErr('err-password2','Mật khẩu không khớp')
+  if (!ok) return
+
+  const btn = document.getElementById('btn-next-info')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span>Đang kiểm tra...'
+
+  try {
+    const res = await fetch('/api/register/info',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username, email, password: pwd})
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      const m = document.getElementById('msg-info')
+      m.textContent = data.detail || 'Lỗi không xác định'
+      m.className = 'msg-box err'; m.style.display='block'
+      return
+    }
+    sessionId = data.session_id
+    await startFacePhase()
+  } catch(e) {
+    const m = document.getElementById('msg-info')
+    m.textContent = 'Lỗi kết nối server'; m.className='msg-box err'; m.style.display='block'
+  } finally {
+    btn.disabled = false; btn.textContent = 'Tiếp theo →'
+  }
+})
+
+// ── Phase 2: Face ────────────────────────────────────────────────────────
+async function startFacePhase() {
+  document.getElementById('phase-info').style.display = 'none'
+  document.getElementById('phase-face').style.display = 'block'
+  document.getElementById('nav-1').classList.remove('active'); document.getElementById('nav-1').classList.add('done')
+  document.getElementById('nav-2').classList.add('active')
+
+  // Init steps list
+  renderStepsList(0)
+
+  // Start camera
+  const video = document.getElementById('video')
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480}})
+    video.srcObject = stream
+  } catch(e) {
+    setMsg('Không mở được camera: ' + e.message,'err'); return
+  }
+
+  // Start registration session
+  await fetch(`/api/register/start/${sessionId}`, {method:'POST'})
+  setMsg('Camera sẵn sàng. ' + STEPS_DEF[0].msg, 'info')
+
+  // Start capture loop
+  captureInterval = setInterval(sendFrame, 120)
+}
+
+function renderStepsList(activeIdx) {
+  const list = document.getElementById('steps-list')
+  list.innerHTML = STEPS_DEF.map((s,i)=>{
+    let cls = i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending'
+    let check = i < activeIdx ? '✓' : i === activeIdx ? '▶' : '○'
+    return `<div class="step-row ${cls}">
+      <span class="step-row-icon">${s.icon}</span>
+      <span>${s.msg}</span>
+      <span class="step-row-check">${check}</span>
+    </div>`
+  }).join('')
+}
+
+async function sendFrame() {
+  if (sending) return
+  const video  = document.getElementById('video')
+  const canvas = document.getElementById('canvas')
+  if (!video.videoWidth) return
+  sending = true
+
+  const tmp = document.createElement('canvas')
+  tmp.width = video.videoWidth; tmp.height = video.videoHeight
+  tmp.getContext('2d').drawImage(video, 0, 0)
+
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight
+
+  try {
+    const blob = await new Promise(r => tmp.toBlob(r,'image/jpeg',0.85))
+    const fd = new FormData(); fd.append('frame', blob,'frame.jpg')
+    const res = await fetch(`/api/register/${sessionId}/frame`,{method:'POST',body:fd})
+    const data = await res.json()
+    handleEvent(data)
+  } catch(e){ /* ignore */ }
+  finally { sending = false }
+}
+
+function handleEvent(data) {
+  const ev = data.event
+  const prog = data.progress || {}
+  const pose = data.pose
+
+  // Update pose display
+  if (pose) {
+    const pi = document.getElementById('pose-info')
+    pi.style.display='block'
+    pi.textContent = `Yaw=${pose.yaw>0?'+':''}${pose.yaw}  Pitch=${pose.pitch>0?'+':''}${pose.pitch}  [${pose.direction}]`
+  }
+
+  // Update instruction
+  if (prog.instruction) {
+    document.getElementById('instr-icon').textContent = prog.icon || '⬜'
+    document.getElementById('instr-text').textContent = prog.instruction
+    renderStepsList(prog.step_index||0)
+  }
+
+  // Hold bar
+  const holdPct = Math.round((prog.hold_progress||0)*100)
+  document.getElementById('hold-fill').style.width = holdPct+'%'
+  document.getElementById('hold-pct').textContent = holdPct+'%'
+
+  // Message
+  const msgMap = {
+    'no_face':'warn','waiting':'info','prompt':'warn',
+    'hold':'info','captured':'ok','step_done':'ok',
+    'timeout':'err','done':'ok'
+  }
+  setMsg(data.message, msgMap[ev]||'info')
+
+  if (ev === 'done') {
+    clearInterval(captureInterval)
+    document.getElementById('done-overlay').classList.add('show')
+    document.getElementById('done-overlay').querySelector('.done-sub').textContent = 'Đang lưu dữ liệu...'
+    finishRegistration()
+  }
+}
+
+async function finishRegistration() {
+  try {
+    const res  = await fetch(`/api/register/${sessionId}/finish`,{method:'POST'})
+    const data = await res.json()
+    if (!res.ok) {
+      setMsg(data.detail||'Lỗi khi lưu', 'err')
+      document.getElementById('done-overlay').classList.remove('show')
+      return
+    }
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('user',  JSON.stringify(data.user))
+
+    // Phase 3
+    document.getElementById('done-overlay').classList.remove('show')
+    document.getElementById('phase-face').style.display='none'
+    document.getElementById('phase-done').style.display='block'
+    document.getElementById('nav-2').classList.remove('active'); document.getElementById('nav-2').classList.add('done')
+    document.getElementById('nav-3').classList.add('active')
+    document.getElementById('done-username').textContent = `// USER: ${data.user.username} — ID: ${data.user.user_id}`
+  } catch(e) {
+    setMsg('Lỗi kết nối khi lưu','err')
+    document.getElementById('done-overlay').classList.remove('show')
+  }
+}
+
+function setMsg(text, type='info') {
+  const m = document.getElementById('msg-face')
+  m.textContent = text
+  m.className = `msg-box ${type}`
+}
+</script>
+</body>
+</html>

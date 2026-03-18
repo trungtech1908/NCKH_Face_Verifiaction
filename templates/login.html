@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Đăng Nhập — FaceAuth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#050a0f;--surface:#080e16;--surface2:#0c1a28;--border:#0d3a5c;
+  --accent:#00d4ff;--accent2:#00ff88;--danger:#ff3366;--warn:#ffaa00;
+  --text:#c8dde8;--muted:#4a7a8a;
+  --font-mono:'Share Tech Mono',monospace;--font-main:'Rajdhani',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-main);
+  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem}
+body::before{content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(0,212,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,.025) 1px,transparent 1px);
+  background-size:40px 40px;pointer-events:none}
+
+.container{width:100%;max-width:440px;z-index:1}
+.back{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);
+  text-decoration:none;display:inline-flex;align-items:center;gap:.5rem;
+  margin-bottom:1.5rem;transition:color .2s}
+.back:hover{color:var(--accent)}
+h1{font-size:2rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.25rem}
+.subtitle{font-family:var(--font-mono);font-size:.75rem;color:var(--muted);
+  letter-spacing:.1em;margin-bottom:2rem}
+
+.panel{background:var(--surface);border:1px solid var(--border);padding:2rem;
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px))}
+.panel-title{font-family:var(--font-mono);font-size:.7rem;color:var(--muted);
+  letter-spacing:.15em;text-transform:uppercase;margin-bottom:1.5rem;
+  padding-bottom:.75rem;border-bottom:1px solid var(--border)}
+
+.form-group{display:flex;flex-direction:column;gap:.4rem;margin-bottom:1rem}
+label{font-size:.8rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+input{background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  font-family:var(--font-main);font-size:1rem;padding:.75rem 1rem;
+  outline:none;transition:border-color .2s,box-shadow .2s;width:100%}
+input:focus{border-color:var(--accent);box-shadow:0 0 15px rgba(0,212,255,.15)}
+input::placeholder{color:var(--muted)}
+
+.msg-box{padding:.75rem 1rem;font-family:var(--font-mono);font-size:.75rem;
+  border:1px solid var(--border);letter-spacing:.05em;margin-bottom:1rem;display:none}
+.msg-box.ok  {border-color:var(--accent2);color:var(--accent2);background:rgba(0,255,136,.05);display:block}
+.msg-box.err {border-color:var(--danger);color:var(--danger);background:rgba(255,51,102,.05);display:block}
+.msg-box.warn{border-color:var(--warn);color:var(--warn);background:rgba(255,170,0,.05);display:block}
+
+.btn{font-family:var(--font-main);font-size:.95rem;font-weight:700;
+  letter-spacing:.15em;text-transform:uppercase;padding:.85rem 2rem;
+  border:none;cursor:pointer;width:100%;transition:all .2s;
+  clip-path:polygon(6px 0%,100% 0%,calc(100% - 6px) 100%,0% 100%)}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover:not(:disabled){box-shadow:0 0 30px rgba(0,212,255,.5)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+.footer-link{text-align:center;margin-top:1rem;font-family:var(--font-mono);
+  font-size:.7rem;color:var(--muted)}
+.footer-link a{color:var(--accent);text-decoration:none}
+
+.spinner{display:inline-block;width:14px;height:14px;
+  border:2px solid rgba(0,212,255,.3);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .6s linear infinite;margin-right:.5rem;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="container">
+  <a href="/" class="back">← Quay lại</a>
+  <h1>Đăng Nhập</h1>
+  <div class="subtitle">// FACE_AUTH_SYSTEM / AUTHENTICATION_MODULE</div>
+
+  <div class="panel">
+    <div class="panel-title">// NHẬP THÔNG TIN ĐĂNG NHẬP</div>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="username" placeholder="Nhập username" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>Mật khẩu</label>
+      <input type="password" id="password" placeholder="Nhập mật khẩu" autocomplete="current-password">
+    </div>
+    <div class="msg-box" id="msg"></div>
+    <button class="btn btn-primary" id="btn-login">Đăng Nhập</button>
+    <div class="footer-link" style="margin-top:1rem">
+      Chưa có tài khoản? <a href="/register">Đăng ký ngay</a>
+    </div>
+  </div>
+</div>
+
+<script>
+async function login() {
+  const username = document.getElementById('username').value.trim()
+  const password = document.getElementById('password').value
+  const msg = document.getElementById('msg')
+  const btn = document.getElementById('btn-login')
+
+  if (!username || !password) { setMsg('Vui lòng nhập đủ thông tin','warn'); return }
+
+  btn.disabled = true
+  btn.innerHTML = '<span class="spinner"></span>Đang xác thực...'
+
+  try {
+    const res  = await fetch('/api/login/password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password})
+    })
+    const data = await res.json()
+    if (!res.ok) { setMsg(data.detail || 'Đăng nhập thất bại', 'err'); return }
+    localStorage.setItem('token', data.token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+    setMsg('✅ ' + data.message, 'ok')
+    setTimeout(() => location.href = '/dashboard', 700)
+  } catch (e) {
+    setMsg('Lỗi kết nối server', 'err')
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Đăng Nhập'
+  }
+}
+
+function setMsg(t, type) {
+  const m = document.getElementById('msg')
+  m.textContent = t; m.className = 'msg-box ' + type
+}
+
+document.getElementById('btn-login').addEventListener('click', login)
+document.getElementById('password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login()
+})
+</script>
+</body>
+</html>

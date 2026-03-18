@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FaceAuth — Hệ thống xác thực khuôn mặt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#050a0f;--surface:#0a1520;--border:#0d3a5c;
+  --accent:#00d4ff;--accent2:#00ff88;--danger:#ff3366;
+  --text:#c8dde8;--muted:#4a7a8a;
+  --font-mono:'Share Tech Mono',monospace;
+  --font-main:'Rajdhani',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-main);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;overflow:hidden;position:relative}
+
+/* Grid background */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);
+  background-size:40px 40px;pointer-events:none;
+}
+/* Glow orb */
+body::after{
+  content:'';position:fixed;top:50%;left:50%;
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(0,212,255,.06) 0%,transparent 70%);
+  transform:translate(-50%,-50%);pointer-events:none;
+}
+
+.hero{text-align:center;z-index:1;padding:2rem}
+.logo{font-family:var(--font-mono);font-size:3.5rem;color:var(--accent);
+  letter-spacing:.3em;text-transform:uppercase;
+  text-shadow:0 0 40px rgba(0,212,255,.5);
+  animation:pulse 3s ease-in-out infinite}
+.tagline{font-size:1.1rem;color:var(--muted);letter-spacing:.2em;
+  text-transform:uppercase;margin-top:.5rem;font-weight:300}
+
+.scan-line{
+  width:200px;height:2px;margin:2rem auto;
+  background:linear-gradient(90deg,transparent,var(--accent),transparent);
+  animation:scan 2s linear infinite;
+}
+
+.actions{display:flex;gap:1.5rem;margin-top:2.5rem;justify-content:center}
+.btn{
+  font-family:var(--font-main);font-size:1rem;font-weight:600;
+  letter-spacing:.15em;text-transform:uppercase;
+  padding:.85rem 2.5rem;border:none;cursor:pointer;
+  text-decoration:none;display:inline-block;
+  clip-path:polygon(8px 0%,100% 0%,calc(100% - 8px) 100%,0% 100%);
+  transition:all .2s;
+}
+.btn-primary{background:var(--accent);color:var(--bg)}
+.btn-primary:hover{background:#fff;box-shadow:0 0 30px rgba(0,212,255,.6)}
+.btn-secondary{background:transparent;color:var(--accent);
+  border:1px solid var(--accent)}
+.btn-secondary:hover{background:rgba(0,212,255,.1);box-shadow:0 0 20px rgba(0,212,255,.3)}
+
+.status-bar{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(5,10,15,.9);border-top:1px solid var(--border);
+  padding:.5rem 2rem;display:flex;justify-content:space-between;
+  font-family:var(--font-mono);font-size:.7rem;color:var(--muted);
+}
+.status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--accent2);margin-right:.5rem;animation:blink 1.5s infinite}
+
+@keyframes pulse{0%,100%{text-shadow:0 0 40px rgba(0,212,255,.5)}
+  50%{text-shadow:0 0 60px rgba(0,212,255,.9),0 0 100px rgba(0,212,255,.3)}}
+@keyframes scan{0%{background-position:-200px}100%{background-position:200px}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+</style>
+</head>
+<body>
+<div class="hero">
+  <div class="logo">FaceAuth</div>
+  <div class="tagline">Hệ thống xác thực sinh trắc học</div>
+  <div class="scan-line"></div>
+  <div class="actions">
+    <a href="/register" class="btn btn-primary">Đăng Ký</a>
+    <a href="/login" class="btn btn-secondary">Đăng Nhập</a>
+  </div>
+</div>
+<div class="status-bar">
+  <span><span class="status-dot"></span>SYSTEM ONLINE</span>
+  <span>MEDIAPIPE · INSIGHTFACE · QDRANT CLOUD</span>
+  <span id="ts"></span>
+</div>
+<script>
+  setInterval(()=>{
+    document.getElementById('ts').textContent=new Date().toLocaleTimeString('vi-VN')
+  },1000)
+</script>
+</body>
+</html>
