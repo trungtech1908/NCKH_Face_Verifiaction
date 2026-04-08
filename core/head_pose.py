@@ -4,7 +4,7 @@ Dùng ratio-based method để tránh gimbal lock của solvePnP.
 """
 import os, urllib.request, cv2, numpy as np, mediapipe as mp, logging
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class HeadPose:
     yaw: float    # âm=trái, dương=phải
     pitch: float  # dương=lên, âm=xuống
     roll: float
+    bbox: List[float]
 
     def direction(self) -> str:
         if abs(self.yaw) <= 18 and abs(self.pitch) <= 18:
@@ -82,7 +83,11 @@ class HeadPoseEstimator:
         le, re = pt(_LEFT_EYE_OUT), pt(_RIGHT_EYE_OUT)
         roll = float(np.degrees(np.arctan2(re[1]-le[1], re[0]-le[0])))
 
-        return HeadPose(yaw=float(yaw), pitch=float(pitch), roll=roll)
+        bbox = [min(lm[i].x for i in range(468)) * w,
+                min(lm[i].y for i in range(468)) * h,
+                max(lm[i].x for i in range(468)) * w,
+                max(lm[i].y for i in range(468)) * h]
+        return HeadPose(yaw=float(yaw), pitch=float(pitch), roll=roll, bbox=bbox)
 
     def close(self): self._lm.close()
     def __enter__(self): return self

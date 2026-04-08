@@ -25,7 +25,8 @@ from fastapi import Request
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict
 
-from core.registration import FaceRegistrationSession
+#from core.registration import FaceRegistrationSession
+from core.registration_FAS import FaceRegistrationSession
 from core.embedding import FaceEmbedder
 from storage.qdrant_store import QdrantFaceStore
 from api.auth import (hash_password, verify_password,
