@@ -52,5 +52,8 @@ class AntiSpoof:
             
             # Kết hợp xác suất
             combined = (p27 + p40) / 2
-            score, label = torch.max(combined, 1)
-            return label.item(), score.item()
+            # Prefer returning the probability of the "live" class (index 1) as the score
+            # and a label that indicates live (1) only when real_prob >= 0.5.
+            real_prob = combined[0, 1].item() if combined.shape[1] > 1 else float(combined[0].max())
+            label = 1 if real_prob >= 0.5 else int(torch.argmax(combined, 1).item())
+            return label, real_prob

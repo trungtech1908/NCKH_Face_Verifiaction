@@ -81,3 +81,5 @@ def build_user_embedding(captures: dict,
     final = aggregate_embeddings(per_dir)
     logger.info("Final embedding shape=%s", final.shape if final is not None else None)
     return final
+def compute_similarity(emb1: np.ndarray, emb2: np.ndarray) -> float:
+    return float(np.dot(emb1, emb2))

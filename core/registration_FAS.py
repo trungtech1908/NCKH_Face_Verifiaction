@@ -7,7 +7,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import List, Optional, Dict, Callable
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 # Giả định các module này đã có sẵn trong source của bạn
 # from core.head_pose import HeadPose, HeadPoseEstimator
@@ -125,22 +125,36 @@ class AntiSpoof:
 
 class FaceRegistrationSession:
     def __init__(self, user_id: str, hold_seconds: float = 1.5, frames_per_step: int = 5, step_timeout: float = 30.0):
-        from core.head_pose import HeadPoseEstimator # Import delay
+        from core.head_pose import HeadPoseEstimator
+        from core.embedding import FaceEmbedder
+
         self.user_id = user_id
         self.hold_seconds = hold_seconds
         self.frames_per_step = frames_per_step
         self.step_timeout = step_timeout
+
         self._estimator = HeadPoseEstimator()
+        self._embedder = FaceEmbedder()  # 🔥 thêm embedder
+
         self._result = RegistrationResult(user_id=user_id)
         self._idx = 0
         self._fas = AntiSpoof(model_dir="./external/anti_spoofing")
+
+        # Anti-spoof buffers
+        import config
+        self._fas_scores = deque(maxlen=config.ANTI_SPOOF_CONSISTENT_FRAMES)
+        self._fas_prev_crop = None
+        self._fas_static_count = 0
+
+        self.reference_embedding = None  # 🔥 embedding chuẩn (FRONT)
+
         self._reset_state()
 
     @property
-    def current_step(self) -> Step: 
+    def current_step(self) -> Step:
         return STEP_ORDER[self._idx]
 
-    def is_done(self) -> bool: 
+    def is_done(self) -> bool:
         return self.current_step == Step.DONE
 
     def _reset_state(self):
@@ -149,35 +163,11 @@ class FaceRegistrationSession:
         self._captured = 0
         self._last_prompt = 0.0
 
-    def get_progress(self) -> Dict:
-        total = len(STEP_ORDER) - 1
-        done  = self._idx
-        hold  = 0.0
-        if self._hold_start:
-            hold = min((time.time() - self._hold_start) / self.hold_seconds, 1.0)
-        
-        steps_status = []
-        for i, s in enumerate(STEP_ORDER[:-1]):
-            if i < done:   status = "done"
-            elif i == done: status = "active"
-            else:           status = "pending"
-            steps_status.append({
-                "step": s.name, "icon": STEP_ICON[s],
-                "msg": STEP_MSG[s], "status": status
-            })
-            
-        return {
-            "step_index": done, "total": total,
-            "percent": round(done / total * 100),
-            "current_step": self.current_step.name,
-            "instruction": STEP_MSG[self.current_step],
-            "icon": STEP_ICON[self.current_step],
-            "hold_progress": hold,
-            "steps": steps_status,
-        }
-
     def process_frame(self, frame_bgr: np.ndarray) -> Dict:
         from src.utility import get_crop_face
+        from core.embedding import compute_similarity
+        import config
+
         if self.is_done():
             return self._ev("done", "Đăng ký hoàn tất!")
 
@@ -185,50 +175,105 @@ class FaceRegistrationSession:
         prog = self.get_progress()
 
         if pose is None:
-            return self._ev("no_face", "Không thấy khuôn mặt. Hãy đảm bảo đủ ánh sáng.", progress=prog)
-        
+            return self._ev("no_face", "Không thấy khuôn mặt", progress=prog)
+
         if time.time() - self._step_start > self.step_timeout:
             self._reset_step()
-            return self._ev("timeout", f"Hết giờ! {STEP_MSG[self.current_step]}", pose=pose, progress=self.get_progress())
+            return self._ev("timeout", "Hết giờ", pose=pose, progress=self.get_progress())
 
         req = STEP_DIR[self.current_step]
 
         if not DIRECTION_ANGLES[req].matches(pose):
             self._hold_start = None
-            return self._ev("waiting", self._hint(pose, req), pose=pose, progress=self.get_progress())
-        
+            return self._ev("waiting", self._hint(pose, req), pose=pose, progress=prog)
+
+        # 🔥 Anti spoof (temporal + static checks)
         i27 = get_crop_face(frame_bgr, box=pose.bbox, scale=2.7)
         i40 = get_crop_face(frame_bgr, box=pose.bbox, scale=4.0)
         label, score = self._fas.predict(i27, i40)
-        
-        if label != 1:
+
+        # Update score history
+        self._fas_scores.append(score)
+
+        # Static (printed photo) detection: compare current crop with previous
+        try:
+            if self._fas_prev_crop is not None:
+                prev = cv2.resize(self._fas_prev_crop, (80, 80))
+                cur = cv2.resize(i40, (80, 80))
+                mean_diff = float(np.mean(np.abs(prev.astype('int32') - cur.astype('int32'))))
+                if mean_diff < config.ANTI_SPOOF_STATIC_THRESHOLD:
+                    self._fas_static_count += 1
+                else:
+                    self._fas_static_count = 0
+            self._fas_prev_crop = i40.copy()
+        except Exception:
+            # If any error in static check, conservatively reset counters
+            self._fas_static_count = 0
+            self._fas_prev_crop = i40.copy()
+
+        if self._fas_static_count >= config.ANTI_SPOOF_STATIC_FRAMES:
             self._hold_start = None
-            return self._ev("spoof_detected", "Phát hiện gian lận! Vui lòng sử dụng khuôn mặt thật.", pose=pose, progress=prog)
-        
+            return self._ev("spoof_detected", "Phát hiện gian lận: ảnh tĩnh giống nhau", pose=pose, progress=prog)
+
+        # Require several consecutive high-confidence "real" scores before proceeding
+        passes = sum(1 for s in self._fas_scores if s >= config.ANTI_SPOOF_SCORE_THRESHOLD)
+        if passes < config.ANTI_SPOOF_CONSISTENT_FRAMES:
+            # Not yet confident about liveness; do not start hold timer
+            self._hold_start = None
+            return self._ev("spoof_uncertain", f"Chờ xác minh liveness... ({passes}/{config.ANTI_SPOOF_CONSISTENT_FRAMES})", pose=pose, progress=prog)
+
+        # 🔥 Hold logic
         if self._hold_start is None:
             self._hold_start = time.time()
-            
+
         hold = min((time.time() - self._hold_start) / self.hold_seconds, 1.0)
         prog["hold_progress"] = hold
 
         if hold < 1.0:
             return self._ev("hold", f"Giữ nguyên... {int(hold*100)}%", pose=pose, progress=prog)
 
+        # 🔥 Capture frame
         cap = self._result.captures.setdefault(req, StepCapture(self.current_step, req))
         cap.frames.append(frame_bgr.copy())
         cap.poses.append(pose)
         self._captured += 1
 
+        # 🔥 ĐỦ FRAME → VERIFY
         if self._captured >= self.frames_per_step:
+
+            # 👉 Extract embedding từ step hiện tại
+            emb = self._embedder.extract_best(cap.frames)
+
+            if emb is None:
+                self._reset_step()
+                return self._ev("error", "Không nhận diện được khuôn mặt", progress=prog)
+
+            # 🔥 STEP FRONT → LÀM REFERENCE
+            if self.current_step == Step.FRONT:
+                self.reference_embedding = emb
+                logger.info("Reference embedding set")
+
+            else:
+                # 🔥 VERIFY với FRONT
+                sim = compute_similarity(self.reference_embedding, emb)
+                logger.info(f"Similarity with reference: {sim:.3f}")
+
+                if sim < config.FACE_VERIFICATION_THRESHOLD:
+                    self._reset_step()
+                    return self._ev(
+                        "face_mismatch",
+                        f"Khuôn mặt không khớp (sim={sim:.2f}) - thử lại",
+                        progress=prog
+                    )
+            # 🔥 PASS → next step
             self._idx += 1
             self._reset_state()
             if self.is_done():
                 self._result.completed = True
-                return self._ev("done", "✅ Đăng ký khuôn mặt hoàn tất!", pose=pose, progress=self.get_progress())
-            return self._ev("step_done", f"✓ Xong! Tiếp theo: {STEP_MSG[self.current_step]}",
-                            pose=pose, progress=self.get_progress())
-
-        return self._ev("captured", f"Đang chụp {self._captured}/{self.frames_per_step}",
+                return self._ev("done", "✅ Đăng ký hoàn tất!", progress=self.get_progress())
+            return self._ev("step_done", f"✓ Tiếp theo: {STEP_MSG[self.current_step]}",
+                            progress=self.get_progress())
+        return self._ev("captured", f"{self._captured}/{self.frames_per_step}",
                         pose=pose, progress=prog)
 
     def get_result(self): return self._result
@@ -237,6 +282,13 @@ class FaceRegistrationSession:
         req = STEP_DIR.get(self.current_step)
         if req and req in self._result.captures:
             del self._result.captures[req]
+        # Clear anti-spoof buffers for the next attempt
+        try:
+            self._fas_scores.clear()
+            self._fas_prev_crop = None
+            self._fas_static_count = 0
+        except Exception:
+            pass
         self._reset_state()
 
     @staticmethod
@@ -261,3 +313,37 @@ class FaceRegistrationSession:
 
     def close(self): 
         self._estimator.close()
+    def get_progress(self) -> Dict:
+        total = len(STEP_ORDER) - 1
+        done  = self._idx
+
+        hold  = 0.0
+        if self._hold_start:
+            hold = min((time.time() - self._hold_start) / self.hold_seconds, 1.0)
+
+        steps_status = []
+        for i, s in enumerate(STEP_ORDER[:-1]):
+            if i < done:
+                status = "done"
+            elif i == done:
+                status = "active"
+            else:
+                status = "pending"
+
+            steps_status.append({
+            "step": s.name,
+            "icon": STEP_ICON[s],
+            "msg": STEP_MSG[s],
+            "status": status
+            })
+
+        return {
+        "step_index": done,
+        "total": total,
+        "percent": round(done / total * 100),
+        "current_step": self.current_step.name,
+        "instruction": STEP_MSG[self.current_step],
+        "icon": STEP_ICON[self.current_step],
+        "hold_progress": hold,
+        "steps": steps_status,
+        }
