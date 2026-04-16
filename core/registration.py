@@ -156,13 +156,18 @@ class FaceRegistrationSession:
         self._captured += 1
 
         if self._captured >= self.frames_per_step:
+            finished_step = self.current_step
+            finished_dir = STEP_DIR[finished_step]
             self._idx += 1
             self._reset_state()
             if self.is_done():
                 self._result.completed = True
                 return self._ev("done", "✅ Đăng ký khuôn mặt hoàn tất!", pose=pose, progress=self.get_progress())
-            return self._ev("step_done", f"✓ Xong! Tiếp theo: {STEP_MSG[self.current_step]}",
-                            pose=pose, progress=self.get_progress())
+            ev = self._ev("step_done", f"✓ Xong! Tiếp theo: {STEP_MSG[self.current_step]}",
+                          pose=pose, progress=self.get_progress())
+            ev["finished_step"] = finished_step.name
+            ev["finished_direction"] = finished_dir
+            return ev
 
         return self._ev("captured", f"Đang chụp {self._captured}/{self.frames_per_step}",
                         pose=pose, progress=prog)
@@ -173,6 +178,26 @@ class FaceRegistrationSession:
         req = STEP_DIR.get(self.current_step)
         if req and req in self._result.captures:
             del self._result.captures[req]
+        self._reset_state()
+
+    def redo_direction(self, direction: str):
+        """
+        Xoá capture của direction và quay lại bước đó để đăng ký lại.
+        """
+        try:
+            direction = str(direction).upper()
+        except Exception:
+            return
+
+        # xóa dữ liệu đã capture cho direction
+        if direction in self._result.captures:
+            del self._result.captures[direction]
+
+        # set current step index về đúng step tương ứng
+        for i, s in enumerate(STEP_ORDER[:-1]):
+            if STEP_DIR.get(s) == direction:
+                self._idx = i
+                break
         self._reset_state()
 
     @staticmethod

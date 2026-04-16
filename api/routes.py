@@ -26,7 +26,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict
 
 from core.registration import FaceRegistrationSession
-from core.embedding import FaceEmbedder
+from core.embedding import FaceEmbedder, build_user_embedding
 from storage.qdrant_store import QdrantFaceStore
 from api.auth import (hash_password, verify_password,
                       create_access_token, decode_token, new_user_id)
@@ -69,6 +69,22 @@ def _decode_frame(data: bytes) -> np.ndarray:
     if frame is None:
         raise ValueError("Cannot decode image")
     return frame
+
+
+def _embedding_duplicate_check(store: QdrantFaceStore, embedding: np.ndarray) -> Optional[dict]:
+    """
+    Check khuôn mặt đã tồn tại trong Qdrant hay chưa.
+    Không chuẩn hoá embedding (theo yêu cầu).
+    """
+    hit = store.search_by_face(
+        embedding=embedding,
+        top_k=10,
+        threshold=0.7,  # giống test.py
+    )
+    if hit is None:
+        return None
+    user, score = hit
+    return {"user": user, "score": score}
 
 def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
@@ -161,6 +177,31 @@ async def register_frame(session_id: str,
         raise HTTPException(400, str(e))
 
     result = sess.process_frame(bgr)
+
+    # Nếu vừa hoàn thành 1 góc, kiểm tra trùng ngay ở góc đó.
+    if result.get("event") == "step_done":
+        finished_dir = result.get("finished_direction")
+        if finished_dir:
+            reg_result = sess.get_result()
+            cap = reg_result.captures.get(finished_dir)
+            if cap and cap.frames:
+                embedder = get_embedder()
+                store = get_store()
+                emb = embedder.extract_best(cap.frames)
+                if emb is not None:
+                    dup = _embedding_duplicate_check(store, emb)
+                    if dup is not None:
+                        sess.redo_direction(finished_dir)
+                        result = {
+                            "event": "duplicate",
+                            "message": (
+                                f"Khuôn mặt ở góc {finished_dir} có vẻ đã được đăng ký "
+                                f"(match '{dup['user'].get('username','Unknown')}', score={dup['score']:.3f}). "
+                                f"Vui lòng đăng ký lại góc {finished_dir}."
+                            ),
+                            "progress": sess.get_progress(),
+                        }
+
     return JSONResponse(result)
 
 
@@ -178,6 +219,17 @@ async def register_finish(session_id: str):
     reg_result = sess.get_result()
     embedder   = get_embedder()
     store      = get_store()
+
+    # ── Face duplicate check: nếu khuôn mặt đã tồn tại trong Qdrant → cảnh báo ──
+    user_emb = build_user_embedding(reg_result.captures, embedder)
+    if user_emb is None:
+        raise HTTPException(500, "Không extract được embedding khuôn mặt")
+    dup = _embedding_duplicate_check(store, user_emb)
+    if dup is not None:
+        raise HTTPException(
+            409,
+            f"Khuôn mặt này có vẻ đã được đăng ký (match '{dup['user'].get('username','Unknown')}', score={dup['score']:.3f}).",
+        )
 
     user_payload = {
         "username":   info["username"],
@@ -207,6 +259,41 @@ async def register_finish(session_id: str):
         "token":   token,
         "user":    {"user_id": info["user_id"], "username": info["username"],
                     "email": info["email"]},
+    }
+
+
+@app.post("/api/login/face")
+async def login_face(frame: UploadFile = File(...)):
+    """
+    Đăng nhập bằng khuôn mặt (giống test.py):
+      - Nhận 1 frame
+      - Extract embedding
+      - Query Qdrant (top_k, score_threshold)
+      - Trả về token nếu match
+    """
+    raw = await frame.read()
+    try:
+        bgr = _decode_frame(raw)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    embedder = get_embedder()
+    store = get_store()
+    emb = embedder.extract(bgr)
+    if emb is None:
+        raise HTTPException(401, "Không phát hiện khuôn mặt")
+
+    dup = _embedding_duplicate_check(store, emb)
+    if dup is None:
+        raise HTTPException(401, "Unknown")
+    user = dup["user"]
+    score = dup["score"]
+    token = create_access_token(user["user_id"], user["username"])
+    return {
+        "message": "Đăng nhập bằng khuôn mặt thành công!",
+        "score": score,
+        "token": token,
+        "user": {"user_id": user["user_id"], "username": user["username"], "email": user.get("email")},
     }
 
 

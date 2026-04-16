@@ -178,6 +178,31 @@ canvas{pointer-events:none}
   border:2px solid rgba(0,212,255,.3);border-top-color:var(--accent);
   border-radius:50%;animation:spin .6s linear infinite;margin-right:.5rem;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Popup modal */
+.modal{
+  display:none;position:fixed;inset:0;z-index:999;
+  background:rgba(0,0,0,.65);align-items:center;justify-content:center;
+  padding:1rem;
+}
+.modal.show{display:flex}
+.modal-card{
+  width:100%;max-width:520px;
+  background:var(--surface);border:1px solid var(--border);
+  padding:1.25rem 1.25rem 1rem;
+  clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));
+}
+.modal-title{font-weight:800;letter-spacing:.15em;text-transform:uppercase}
+.modal-title.warn{color:var(--warn)}
+.modal-title.err{color:var(--danger)}
+.modal-body{margin-top:.75rem;font-family:var(--font-mono);font-size:.8rem;color:var(--text);line-height:1.4}
+.modal-actions{margin-top:1rem;display:flex;justify-content:flex-end;gap:.75rem}
+.btn-ghost{
+  background:transparent;border:1px solid var(--border);color:var(--text);
+  padding:.65rem 1.25rem;font-family:var(--font-main);
+  font-weight:800;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;
+}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -298,6 +323,17 @@ canvas{pointer-events:none}
   </div>
 </div>
 
+<!-- Popup modal -->
+<div class="modal" id="modal">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-title warn" id="modal-title">CẢNH BÁO</div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="modal-close">Đã hiểu</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = ''
 let sessionId = null
@@ -387,6 +423,29 @@ async function startFacePhase() {
   captureInterval = setInterval(sendFrame, 120)
 }
 
+// ── Popup helpers ─────────────────────────────────────────────────────────
+function showPopup(message, type='warn') {
+  const modal = document.getElementById('modal')
+  const title = document.getElementById('modal-title')
+  const body  = document.getElementById('modal-body')
+  body.textContent = message || ''
+  if (type === 'err') {
+    title.textContent = 'LỖI'
+    title.className = 'modal-title err'
+  } else {
+    title.textContent = 'CẢNH BÁO'
+    title.className = 'modal-title warn'
+  }
+  modal.classList.add('show')
+}
+function hidePopup() {
+  document.getElementById('modal').classList.remove('show')
+}
+document.getElementById('modal-close').addEventListener('click', hidePopup)
+document.getElementById('modal').addEventListener('click', (e)=>{
+  if (e.target && e.target.id === 'modal') hidePopup()
+})
+
 function renderStepsList(activeIdx) {
   const list = document.getElementById('steps-list')
   list.innerHTML = STEPS_DEF.map((s,i)=>{
@@ -451,9 +510,15 @@ function handleEvent(data) {
   const msgMap = {
     'no_face':'warn','waiting':'info','prompt':'warn',
     'hold':'info','captured':'ok','step_done':'ok',
-    'timeout':'err','done':'ok'
+    'timeout':'err','done':'ok',
+    'duplicate':'err'
   }
   setMsg(data.message, msgMap[ev]||'info')
+
+  if (ev === 'duplicate') {
+    showPopup(data.message || 'Khuôn mặt bị trùng. Vui lòng đăng ký lại góc này.', 'warn')
+    return
+  }
 
   if (ev === 'done') {
     clearInterval(captureInterval)
@@ -469,6 +534,7 @@ async function finishRegistration() {
     const data = await res.json()
     if (!res.ok) {
       setMsg(data.detail||'Lỗi khi lưu', 'err')
+      showPopup(data.detail || 'Lỗi khi lưu', 'err')
       document.getElementById('done-overlay').classList.remove('show')
       return
     }
