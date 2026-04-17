@@ -8,9 +8,7 @@ from enum import Enum, auto
 from typing import List, Optional, Dict, Callable
 from core.head_pose import HeadPose, HeadPoseEstimator
 import cv2, numpy as np
-
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class AngleRange:
@@ -132,6 +130,7 @@ class FaceRegistrationSession:
 
         req = STEP_DIR[self.current_step]
         if not DIRECTION_ANGLES[req].matches(pose):
+
             self._hold_start = None
             ev, msg = "waiting", STEP_MSG[self.current_step]
             if time.time() - self._last_prompt >= 3.0:
@@ -139,7 +138,7 @@ class FaceRegistrationSession:
                 msg = self._hint(pose, req)
                 ev  = "prompt"
             return self._ev(ev, msg, pose=pose, progress=prog)
-
+        
         # Đúng hướng
         if self._hold_start is None:
             self._hold_start = time.time()
