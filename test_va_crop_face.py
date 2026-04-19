@@ -70,7 +70,7 @@ while True:
     last_face_centers = new_centers.copy()
 
     # 2. FAS & RECOGNITION (3 giây/lần)
-    if time.time() - last_embedding_time > 3:
+    if time.time() - last_embedding_time > 0.5:
         to_query = []
         for face, fid in zip(faces, curr_ids):
             i27 = get_crop_face(frame, face.bbox, 2.7)
