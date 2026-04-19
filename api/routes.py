@@ -132,10 +132,13 @@ async def register_start(session_id: str):
     if not info:
         raise HTTPException(404, "Session không tồn tại hoặc đã hết hạn")
 
+    # reuse insightface app from embedder to keep detection consistent
+    embedder = get_embedder()
     reg = FaceRegistrationSession(
         user_id=info["user_id"],
         hold_seconds=1.5,
         frames_per_step=5,
+        face_app=embedder.app,
     )
     with _lock:
         _sessions[session_id] = reg
