@@ -74,8 +74,6 @@ class QdrantFaceStore:
         Extract embedding từng frame và lưu thành nhiều points.
         Trả về số points đã lưu.
         """
-        from core.embedding import l2_norm
-
         points = []
         for direction, capture in captures.items():
             for idx, frame in enumerate(capture.frames):
@@ -158,13 +156,34 @@ class QdrantFaceStore:
         if threshold is None:
             threshold = config.FACE_SIMILARITY_THRESHOLD
 
-        hits = self.client.search(
-            collection_name=config.QDRANT_COLLECTION,
-            query_vector=embedding.tolist(),
-            limit=top_k,
-            score_threshold=threshold,
-            with_payload=True,
-        )
+        # qdrant-client version compatibility:
+        # - Newer versions support `search(...)`
+        # - Some versions (incl. used in test.py) use `query_points(...)`
+        hits = None
+        try:
+            hits = self.client.search(
+                collection_name=config.QDRANT_COLLECTION,
+                query_vector=embedding.tolist(),
+                limit=top_k,
+                score_threshold=threshold,
+                with_payload=True,
+            )
+        except AttributeError:
+            results = self.client.query_points(
+                collection_name=config.QDRANT_COLLECTION,
+                query=embedding.tolist(),
+                limit=top_k,
+            )
+            hits = getattr(results, "points", None)
+
+        if not hits:
+            return None
+
+        # Enforce threshold for clients that don't support score_threshold in query_points
+        try:
+            hits = [h for h in hits if getattr(h, "score", 0.0) >= threshold]
+        except Exception:
+            pass
         if not hits:
             return None
 
