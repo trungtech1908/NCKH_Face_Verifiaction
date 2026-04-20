@@ -86,6 +86,19 @@ def _embedding_duplicate_check(store: QdrantFaceStore, embedding: np.ndarray) ->
     user, score = hit
     return {"user": user, "score": score}
 
+
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    try:
+        a = np.asarray(a, dtype=np.float32)
+        b = np.asarray(b, dtype=np.float32)
+        na = float(np.linalg.norm(a))
+        nb = float(np.linalg.norm(b))
+        if na <= 1e-9 or nb <= 1e-9:
+            return 0.0
+        return float(np.dot(a, b) / (na * nb))
+    except Exception:
+        return 0.0
+
 def _get_current_user(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing token")
@@ -189,6 +202,27 @@ async def register_frame(session_id: str,
                 store = get_store()
                 emb = embedder.extract_best(cap.frames)
                 if emb is not None:
+                    # ── Same-person check: 1 account không được đăng ký 2 khuôn mặt ──
+                    # Lấy FRONT làm gốc; các góc khác phải đủ giống (cosine >= 0.65)
+                    if finished_dir != "FRONT":
+                        front_cap = reg_result.captures.get("FRONT")
+                        if front_cap and front_cap.frames:
+                            emb_front = embedder.extract_best(front_cap.frames)
+                            if emb_front is not None:
+                                sim = _cosine_similarity(emb_front, emb)
+                                if sim < 0.65:
+                                    sess.redo_direction(finished_dir)
+                                    result = {
+                                        "event": "mismatch_face",
+                                        "message": (
+                                            f"Góc {finished_dir} không khớp với góc chính diện (FRONT) "
+                                            f"(cosine={sim:.3f} < 0.65). "
+                                            f"Không được phép đăng ký 2 khuôn mặt. Vui lòng đăng ký lại góc {finished_dir}."
+                                        ),
+                                        "progress": sess.get_progress(),
+                                    }
+                                    return JSONResponse(result)
+
                     dup = _embedding_duplicate_check(store, emb)
                     if dup is not None:
                         sess.redo_direction(finished_dir)
@@ -219,6 +253,26 @@ async def register_finish(session_id: str):
     reg_result = sess.get_result()
     embedder   = get_embedder()
     store      = get_store()
+
+    # ── Same-person check at finish (safety net) ──
+    front_cap = reg_result.captures.get("FRONT")
+    if not front_cap or not front_cap.frames:
+        raise HTTPException(400, "Thiếu góc chính diện (FRONT)")
+    emb_front = embedder.extract_best(front_cap.frames)
+    if emb_front is None:
+        raise HTTPException(500, "Không extract được embedding góc chính diện (FRONT)")
+    for d, cap in reg_result.captures.items():
+        if d == "FRONT":
+            continue
+        emb_d = embedder.extract_best(cap.frames) if cap and cap.frames else None
+        if emb_d is None:
+            continue
+        sim = _cosine_similarity(emb_front, emb_d)
+        if sim < 0.65:
+            raise HTTPException(
+                409,
+                f"Góc {d} không khớp với FRONT (cosine={sim:.3f} < 0.65). Không được phép đăng ký 2 khuôn mặt.",
+            )
 
     # ── Face duplicate check: nếu khuôn mặt đã tồn tại trong Qdrant → cảnh báo ──
     user_emb = build_user_embedding(reg_result.captures, embedder)

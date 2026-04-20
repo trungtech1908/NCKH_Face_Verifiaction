@@ -4,7 +4,6 @@ FRONT → LEFT → RIGHT → UP → DOWN → DONE
 Tích hợp Anti-Spoof (chống ảnh 2D / mặt nạ)
 """
 import time, logging, os
-import torch
 import cv2
 import numpy as np
 from collections import OrderedDict, deque
@@ -41,7 +40,9 @@ class AntiSpoof:
     """Wrapper MiniFASNet V2 + V1SE → liveness score."""
 
     def __init__(self, model_dir: str = "./external/anti_spoofing"):
+        import torch
         from src.model_lib.MiniFASNet import MiniFASNetV2, MiniFASNetV1SE
+        self._torch = torch
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_dir = model_dir
         self.model_27  = self._load("2.7_80x80_MiniFASNetV2.pth",       MiniFASNetV2)
@@ -49,6 +50,7 @@ class AntiSpoof:
         logger.info("[AntiSpoof] Models loaded on %s", self.device)
 
     def _load(self, name, cls):
+        torch = self._torch
         path = os.path.join(self.model_dir, name)
         model = cls(conv6_kernel=5, num_classes=3)
         sd = torch.load(path, map_location=self.device)
@@ -60,6 +62,7 @@ class AntiSpoof:
         return model
 
     def _preprocess(self, img: np.ndarray):
+        torch = self._torch
         if img is None or img.size == 0:
             return None
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -68,6 +71,7 @@ class AntiSpoof:
 
     def predict(self, img_27: np.ndarray, img_40: np.ndarray):
         """Trả về (label, score). label=1 → real; label=0/2 → spoof."""
+        torch = self._torch
         t27 = self._preprocess(img_27)
         t40 = self._preprocess(img_40)
         if t27 is None or t40 is None:
@@ -144,7 +148,8 @@ class FaceRegistrationSession:
                  hold_seconds: float = 1.5,
                  frames_per_step: int = 5,
                  step_timeout: float = 30.0,
-                 fas_model_dir: str = "./external/anti_spoofing"):
+                 fas_model_dir: str = "./external/anti_spoofing",
+                 enable_anti_spoof: bool = False):
         self.user_id         = user_id
         self.hold_seconds    = hold_seconds
         self.frames_per_step = frames_per_step
@@ -154,11 +159,18 @@ class FaceRegistrationSession:
         self._result    = RegistrationResult(user_id=user_id)
         self._idx       = 0
 
-        # Anti-spoof
-        self._fas              = AntiSpoof(model_dir=fas_model_dir)
-        self._fas_scores       = deque(maxlen=_fas_cfg("ANTI_SPOOF_CONSISTENT_FRAMES"))
-        self._fas_prev_crop    = None
-        self._fas_static_count = 0
+        # Anti-spoof (tạm thời tắt theo yêu cầu)
+        self._anti_spoof_enabled = bool(enable_anti_spoof)
+        if self._anti_spoof_enabled:
+            self._fas              = AntiSpoof(model_dir=fas_model_dir)
+            self._fas_scores       = deque(maxlen=_fas_cfg("ANTI_SPOOF_CONSISTENT_FRAMES"))
+            self._fas_prev_crop    = None
+            self._fas_static_count = 0
+        else:
+            self._fas              = None
+            self._fas_scores       = None
+            self._fas_prev_crop    = None
+            self._fas_static_count = 0
 
         self._reset_state()
 
@@ -178,10 +190,11 @@ class FaceRegistrationSession:
         req = STEP_DIR.get(self.current_step)
         if req and req in self._result.captures:
             del self._result.captures[req]
-        # xoá buffer anti-spoof để thử lại sạch
-        self._fas_scores.clear()
-        self._fas_prev_crop    = None
-        self._fas_static_count = 0
+        # xoá buffer anti-spoof để thử lại sạch (nếu bật)
+        if self._anti_spoof_enabled and self._fas_scores is not None:
+            self._fas_scores.clear()
+            self._fas_prev_crop    = None
+            self._fas_static_count = 0
         self._reset_state()
 
     # ── progress ──────────────────────────────
@@ -211,7 +224,8 @@ class FaceRegistrationSession:
 
     # ── main frame processor ──────────────────
     def process_frame(self, frame_bgr: np.ndarray) -> Dict:
-        from src.utility import get_crop_face
+        if self._anti_spoof_enabled:
+            from src.utility import get_crop_face
 
         if self.is_done():
             return self._ev("done", "Đăng ký hoàn tất!")
@@ -239,44 +253,43 @@ class FaceRegistrationSession:
                 ev  = "prompt"
             return self._ev(ev, msg, pose=pose, progress=prog)
 
-        # ── Anti-Spoof: lấy crop theo 2 scale ─
-        i27 = get_crop_face(frame_bgr, box=pose.bbox, scale=2.7)
-        i40 = get_crop_face(frame_bgr, box=pose.bbox, scale=4.0)
-        label, score = self._fas.predict(i27, i40)
+        # ── Anti-Spoof (tạm thời tắt) ─────────────────────────────
+        # Khi bật lại, chỉ cần enable_anti_spoof=True ở constructor.
+        if self._anti_spoof_enabled and self._fas is not None and self._fas_scores is not None:
+            i27 = get_crop_face(frame_bgr, box=pose.bbox, scale=2.7)
+            i40 = get_crop_face(frame_bgr, box=pose.bbox, scale=4.0)
+            label, score = self._fas.predict(i27, i40)
 
-        # cập nhật score history
-        self._fas_scores.append(score)
+            self._fas_scores.append(score)
 
-        # kiểm tra ảnh tĩnh (in trên giấy / điện thoại không có chuyển động)
-        try:
-            if self._fas_prev_crop is not None:
-                prev = cv2.resize(self._fas_prev_crop, (80, 80))
-                cur  = cv2.resize(i40,               (80, 80))
-                diff = float(np.mean(np.abs(prev.astype("int32") - cur.astype("int32"))))
-                if diff < _fas_cfg("ANTI_SPOOF_STATIC_THRESHOLD"):
-                    self._fas_static_count += 1
-                else:
-                    self._fas_static_count = 0
-            self._fas_prev_crop = i40.copy()
-        except Exception:
-            self._fas_static_count = 0
-            self._fas_prev_crop    = i40.copy() if i40 is not None else None
+            try:
+                if self._fas_prev_crop is not None:
+                    prev = cv2.resize(self._fas_prev_crop, (80, 80))
+                    cur  = cv2.resize(i40,               (80, 80))
+                    diff = float(np.mean(np.abs(prev.astype("int32") - cur.astype("int32"))))
+                    if diff < _fas_cfg("ANTI_SPOOF_STATIC_THRESHOLD"):
+                        self._fas_static_count += 1
+                    else:
+                        self._fas_static_count = 0
+                self._fas_prev_crop = i40.copy()
+            except Exception:
+                self._fas_static_count = 0
+                self._fas_prev_crop    = i40.copy() if i40 is not None else None
 
-        if self._fas_static_count >= _fas_cfg("ANTI_SPOOF_STATIC_FRAMES"):
-            self._hold_start = None
-            return self._ev("spoof_detected",
-                            "⚠️ Phát hiện gian lận: ảnh tĩnh / ảnh in 2D",
-                            pose=pose, progress=prog)
+            if self._fas_static_count >= _fas_cfg("ANTI_SPOOF_STATIC_FRAMES"):
+                self._hold_start = None
+                return self._ev("spoof_detected",
+                                "⚠️ Phát hiện gian lận: ảnh tĩnh / ảnh in 2D",
+                                pose=pose, progress=prog)
 
-        # chờ đủ số frame liveness tin cậy
-        passes = sum(1 for s in self._fas_scores
-                     if s >= _fas_cfg("ANTI_SPOOF_SCORE_THRESHOLD"))
-        needed = _fas_cfg("ANTI_SPOOF_CONSISTENT_FRAMES")
-        if passes < needed:
-            self._hold_start = None
-            return self._ev("spoof_uncertain",
-                            f"Đang xác minh liveness... ({passes}/{needed})",
-                            pose=pose, progress=prog)
+            passes = sum(1 for s in self._fas_scores
+                         if s >= _fas_cfg("ANTI_SPOOF_SCORE_THRESHOLD"))
+            needed = _fas_cfg("ANTI_SPOOF_CONSISTENT_FRAMES")
+            if passes < needed:
+                self._hold_start = None
+                return self._ev("spoof_uncertain",
+                                f"Đang xác minh liveness... ({passes}/{needed})",
+                                pose=pose, progress=prog)
 
         # ── Đúng hướng + liveness OK → hold timer ─
         if self._hold_start is None:
@@ -298,10 +311,11 @@ class FaceRegistrationSession:
             finished_dir  = STEP_DIR[finished_step]
             self._idx    += 1
             self._reset_state()
-            # reset anti-spoof buffer cho bước tiếp theo
-            self._fas_scores.clear()
-            self._fas_prev_crop    = None
-            self._fas_static_count = 0
+            # reset anti-spoof buffer cho bước tiếp theo (nếu bật)
+            if self._anti_spoof_enabled and self._fas_scores is not None:
+                self._fas_scores.clear()
+                self._fas_prev_crop    = None
+                self._fas_static_count = 0
 
             if self.is_done():
                 self._result.completed = True
@@ -334,9 +348,10 @@ class FaceRegistrationSession:
             if STEP_DIR.get(s) == direction:
                 self._idx = i
                 break
-        self._fas_scores.clear()
-        self._fas_prev_crop    = None
-        self._fas_static_count = 0
+        if self._anti_spoof_enabled and self._fas_scores is not None:
+            self._fas_scores.clear()
+            self._fas_prev_crop    = None
+            self._fas_static_count = 0
         self._reset_state()
 
     def close(self): self._estimator.close()

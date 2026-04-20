@@ -511,12 +511,17 @@ function handleEvent(data) {
     'no_face':'warn','waiting':'info','prompt':'warn',
     'hold':'info','captured':'ok','step_done':'ok',
     'timeout':'err','done':'ok',
-    'duplicate':'err'
+    'duplicate':'err',
+    'mismatch_face':'err'
   }
   setMsg(data.message, msgMap[ev]||'info')
 
   if (ev === 'duplicate') {
     showPopup(data.message || 'Khuôn mặt bị trùng. Vui lòng đăng ký lại góc này.', 'warn')
+    return
+  }
+  if (ev === 'mismatch_face') {
+    showPopup(data.message || 'Góc này không khớp với chính diện. Vui lòng đăng ký lại.', 'warn')
     return
   }
 
