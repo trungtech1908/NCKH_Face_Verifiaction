@@ -159,8 +159,7 @@ class FaceRegistrationSession:
         import config
         # store tuples (label, score) to allow checking label + score consistency
         self._fas_scores = deque(maxlen=config.ANTI_SPOOF_CONSISTENT_FRAMES)
-        self._fas_prev_crop = None
-        self._fas_static_count = 0
+        # static-check đã bỏ để tránh false-positive "ảnh tĩnh"
 
         self.reference_embedding = None
 
@@ -230,46 +229,27 @@ class FaceRegistrationSession:
             self._hold_start = None
             return self._ev("waiting", self._hint(pose, req), pose=pose, progress=prog)
 
-        # Anti spoof (strict + temporal + static checks)
+        # Anti spoof (giống test_va_crop_face.py):
+        # - Không dùng static-check (dễ false-positive "ảnh tĩnh")
+        # - Dùng label==1 và score >= threshold trong vài frame liên tiếp
         i27 = get_crop_face(frame_bgr, box=face_bbox, scale=2.7)
         i40 = get_crop_face(frame_bgr, box=face_bbox, scale=4.0)
         label, score = self._fas.predict(i27, i40)
 
-        # Immediate spoof detection: any frame not meeting strict per-frame criterion is rejected
-        STRICT_SCORE = 0.9
-        if not (label == 1 and score > STRICT_SCORE):
-            # Reset hold and give clear feedback
+        # lưu score để kiểm tra theo thời gian
+        self._fas_scores.append(score if label == 1 else 0.0)
+
+        thr = float(getattr(config, "ANTI_SPOOF_SCORE_THRESHOLD", 0.85))
+        needed = int(getattr(config, "ANTI_SPOOF_CONSISTENT_FRAMES", 3))
+        passes = sum(1 for s in self._fas_scores if s >= thr)
+        if passes < needed:
             self._hold_start = None
-            return self._ev("spoof_detected", "Phát hiện ảnh giả/2D!", pose=pose, progress=prog)
-
-        # store label+score for temporal consistency (only real frames reach here)
-        self._fas_scores.append((label, score))
-
-        # Static (printed photo) detection: compare current crop with previous
-        try:
-            if self._fas_prev_crop is not None:
-                prev = cv2.resize(self._fas_prev_crop, (80, 80))
-                cur = cv2.resize(i40, (80, 80))
-                mean_diff = float(np.mean(np.abs(prev.astype('int32') - cur.astype('int32'))))
-                if mean_diff < config.ANTI_SPOOF_STATIC_THRESHOLD:
-                    self._fas_static_count += 1
-                else:
-                    self._fas_static_count = 0
-            self._fas_prev_crop = i40.copy()
-        except Exception:
-            self._fas_static_count = 0
-            self._fas_prev_crop = i40.copy()
-
-        if self._fas_static_count >= config.ANTI_SPOOF_STATIC_FRAMES:
-            self._hold_start = None
-            return self._ev("spoof_detected", "Phát hiện gian lận: ảnh tĩnh giống nhau", pose=pose, progress=prog)
-
-        # Require several consecutive frames where label == 1 (temporal)
-        passes = sum(1 for l, s in self._fas_scores if l == 1)
-        if passes < config.ANTI_SPOOF_CONSISTENT_FRAMES:
-            # Not yet confident about liveness; do not start hold timer
-            self._hold_start = None
-            return self._ev("spoof_uncertain", f"Chờ xác minh liveness... ({passes}/{config.ANTI_SPOOF_CONSISTENT_FRAMES})", pose=pose, progress=prog)
+            return self._ev(
+                "spoof_uncertain",
+                f"Đang xác minh liveness... ({passes}/{needed})",
+                pose=pose,
+                progress=prog,
+            )
 
         # Hold logic — current frame is strict real already
         if self._hold_start is None:
@@ -300,11 +280,11 @@ class FaceRegistrationSession:
             else:
                 sim = compute_similarity(self.reference_embedding, emb)
                 logger.info(f"Similarity with reference: {sim:.3f}")
-                if sim < config.FACE_VERIFICATION_THRESHOLD:
+                if sim < 0.5:
                     self._reset_step()
                     return self._ev(
                         "face_mismatch",
-                        f"Khuôn mặt không khớp (sim={sim:.2f}) - thử lại",
+                        f"Khuôn mặt không khớp với ảnh chính diện (cosine={sim:.3f} < 0.5). Vui lòng đăng ký lại góc này.",
                         progress=prog
                     )
 
@@ -313,7 +293,10 @@ class FaceRegistrationSession:
             if self.is_done():
                 self._result.completed = True
                 return self._ev("done", "✅ Đăng ký hoàn tất!", progress=self.get_progress())
-            return self._ev("step_done", f"✓ Tiếp theo: {STEP_MSG[self.current_step]}", progress=self.get_progress())
+            ev = self._ev("step_done", f"✓ Tiếp theo: {STEP_MSG[self.current_step]}", progress=self.get_progress())
+            ev["finished_step"] = STEP_ORDER[self._idx - 1].name
+            ev["finished_direction"] = STEP_DIR[STEP_ORDER[self._idx - 1]]
+            return ev
 
         return self._ev("captured", f"{self._captured}/{self.frames_per_step}", pose=pose, progress=prog)
 
@@ -326,8 +309,33 @@ class FaceRegistrationSession:
         # Clear anti-spoof buffers for the next attempt
         try:
             self._fas_scores.clear()
-            self._fas_prev_crop = None
-            self._fas_static_count = 0
+        except Exception:
+            pass
+        self._reset_state()
+
+    def redo_direction(self, direction: str):
+        """
+        Xoá capture của direction và quay lại bước đó để đăng ký lại.
+        Được gọi khi phát hiện khuôn mặt trùng DB hoặc không khớp FRONT.
+        """
+        try:
+            direction = str(direction).upper()
+        except Exception:
+            return
+
+        # xóa dữ liệu đã capture cho direction
+        if direction in self._result.captures:
+            del self._result.captures[direction]
+
+        # set current step index về đúng step tương ứng
+        for i, s in enumerate(STEP_ORDER[:-1]):
+            if STEP_DIR.get(s) == direction:
+                self._idx = i
+                break
+
+        # Clear anti-spoof buffers
+        try:
+            self._fas_scores.clear()
         except Exception:
             pass
         self._reset_state()

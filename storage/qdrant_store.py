@@ -141,6 +141,58 @@ class QdrantFaceStore:
 
     # ── FACE SEARCH ────────────────────────────────────────────────────────
 
+    def query_face_points(
+        self,
+        embedding: np.ndarray,
+        top_k: int = 15,
+    ):
+        """
+        Trả về danh sách points/hits thô từ Qdrant (không majority-vote).
+        Tương thích cả qdrant-client có `search` và chỉ có `query_points`.
+        """
+        try:
+            hits = self.client.search(
+                collection_name=config.QDRANT_COLLECTION,
+                query_vector=embedding.tolist(),
+                limit=top_k,
+                with_payload=True,
+            )
+            return hits or []
+        except AttributeError:
+            results = self.client.query_points(
+                collection_name=config.QDRANT_COLLECTION,
+                query=embedding.tolist(),
+                limit=top_k,
+            )
+            return getattr(results, "points", []) or []
+
+    def has_any_face_match(
+        self,
+        embedding: np.ndarray,
+        top_k: int = 15,
+        threshold: float = None,
+    ) -> Optional[Tuple[Dict, float]]:
+        """
+        Logic "trùng DB" theo yêu cầu:
+          - query top_k points
+          - lọc score >= threshold
+          - chỉ cần 1 point là tính match
+        Trả (payload, best_score) của point tốt nhất, hoặc None.
+        """
+        if threshold is None:
+            threshold = config.FACE_SIMILARITY_THRESHOLD
+
+        hits = self.query_face_points(embedding=embedding, top_k=top_k)
+        if not hits:
+            return None
+
+        good = [h for h in hits if getattr(h, "score", 0.0) >= threshold]
+        if not good:
+            return None
+
+        best = max(good, key=lambda h: getattr(h, "score", 0.0))
+        return best.payload, float(best.score)
+
     def search_by_face(
         self,
         embedding: np.ndarray,

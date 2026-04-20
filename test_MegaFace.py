@@ -25,7 +25,7 @@ rec_model = app.models['recognition']
 DATASET_PATH = "megaface-testsuite/megaface/data/megaface_testpack_v1.0/facescrub_images"
 
 TOP_K = 15
-THRESHOLD = 0.6
+THRESHOLD = 0.4
 VOTE_K = 1
 
 persons = sorted(os.listdir(DATASET_PATH))

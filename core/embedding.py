@@ -39,16 +39,33 @@ class FaceEmbedder:
         return best_emb
 
 
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """
+    Cosine similarity đúng công thức: dot(a,b) / (||a|| * ||b||)
+    Dùng embedding thô (raw) của InsightFace, KHÔNG chuẩn hoá.
+    """
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    dot = float(np.dot(a, b))
+    norm_a = float(np.linalg.norm(a))
+    norm_b = float(np.linalg.norm(b))
+    if norm_a < 1e-9 or norm_b < 1e-9:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
 def aggregate_embeddings(embeddings: List[np.ndarray],
                          threshold: float = 0.4) -> Optional[np.ndarray]:
-    """Mean embedding sau khi lọc outlier."""
+    """Mean embedding sau khi lọc outlier bằng cosine similarity."""
     if not embeddings:
         return None
     if len(embeddings) == 1:
         return embeddings[0]
     stack = np.stack(embeddings)
     mean  = stack.mean(axis=0)
-    sims  = stack @ mean
+    # Tính cosine similarity đúng công thức cho từng embedding vs mean
+    sims = np.array([cosine_similarity(emb, mean) for emb in stack])
+    logger.debug("aggregate_embeddings cosine sims: %s", sims)
     good  = stack[sims >= threshold]
     if len(good) == 0:
         return mean
@@ -77,4 +94,5 @@ def build_user_embedding(captures: dict,
     logger.info("Final embedding shape=%s", final.shape if final is not None else None)
     return final
 def compute_similarity(emb1: np.ndarray, emb2: np.ndarray) -> float:
-    return float(np.dot(emb1, emb2))
+    """Cosine similarity đúng công thức, dùng embedding thô."""
+    return cosine_similarity(emb1, emb2)
