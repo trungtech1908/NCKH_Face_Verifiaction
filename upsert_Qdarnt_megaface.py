@@ -27,7 +27,7 @@ total_images = 0
 pushed = 0
 
 # ===== CHỈ LẤY 70 PERSON ĐẦU =====
-persons = os.listdir(DATASET_PATH)[:70]
+persons = sorted(os.listdir(DATASET_PATH))[:70]
 
 for person in tqdm(persons, desc="Persons"):
 
