@@ -42,6 +42,7 @@ from typing import Optional, Dict, List
 
 from core.registration_FAS import FaceRegistrationSession
 from core.embedding import FaceEmbedder, build_user_embedding, cosine_similarity
+from core.occlusion import detect_occlusion, describe_reasons
 from storage.qdrant_store import QdrantFaceStore
 from storage.mysql_store import MySQLUserStore, init_database
 from api.auth import (hash_password, verify_password,
@@ -739,6 +740,24 @@ async def face_verify(frame: UploadFile = File(...)):
             payload["bbox"] = bbox
             if payload.get("match"):
                 any_match = True
+            out_faces.append(payload)
+            continue
+
+        # Occlusion check (mask / kính đen) — từ chối trước khi FAS/Qdrant
+        try:
+            occ, reasons, _m = detect_occlusion(bgr, face)
+        except Exception:
+            occ, reasons = False, []
+        if occ:
+            payload = _face_payload(
+                bbox,
+                match=False,
+                score=None,
+                user=None,
+                message=describe_reasons(reasons),
+            )
+            payload["occluded"] = True
+            payload["occlusion_reasons"] = reasons
             out_faces.append(payload)
             continue
 

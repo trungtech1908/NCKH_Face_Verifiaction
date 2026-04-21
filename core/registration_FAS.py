@@ -202,10 +202,27 @@ class FaceRegistrationSession:
             if pose is None:
                 return self._ev("no_face", "Không thấy khuôn mặt", progress=prog)
             face_bbox = pose.bbox
+            best_face = None
         else:
             # prefer the best-scored face from InsightFace
             face = max(faces, key=lambda f: getattr(f, 'det_score', 0.0))
             face_bbox = face.bbox
+            best_face = face
+
+        # Occlusion check (mask / sunglasses) — từ chối nếu bị che
+        if best_face is not None:
+            try:
+                from core.occlusion import detect_occlusion, describe_reasons
+                occ, reasons, _m = detect_occlusion(frame_bgr, best_face)
+                if occ:
+                    self._hold_start = None
+                    return self._ev(
+                        "occluded",
+                        describe_reasons(reasons) + " — bỏ khẩu trang/kính và thử lại",
+                        progress=prog,
+                    )
+            except Exception:
+                pass
 
         if time.time() - self._step_start > self.step_timeout:
             self._reset_step()

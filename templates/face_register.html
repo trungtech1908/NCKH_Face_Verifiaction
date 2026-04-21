@@ -357,7 +357,7 @@ function handleEvent(data){
     'hold':'info','captured':'ok','step_done':'ok',
     'timeout':'err','done':'ok',
     'duplicate':'err','mismatch_face':'err','face_mismatch':'err',
-    'spoof_uncertain':'warn'
+    'spoof_uncertain':'warn','occluded':'err'
   }
   setMsg(data.message, msgMap[ev]||'info')
 
