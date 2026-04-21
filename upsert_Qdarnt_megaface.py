@@ -26,7 +26,8 @@ DATASET_PATH = "megaface-testsuite/megaface/data/megaface_testpack_v1.0/facescru
 total_images = 0
 pushed = 0
 
-persons = os.listdir(DATASET_PATH)
+# ===== CHỈ LẤY 70 PERSON ĐẦU =====
+persons = os.listdir(DATASET_PATH)[:70]
 
 for person in tqdm(persons, desc="Persons"):
 
@@ -34,10 +35,12 @@ for person in tqdm(persons, desc="Persons"):
     if not os.path.isdir(person_path):
         continue
 
-    images = sorted(os.listdir(person_path))
-    total_images += len(images)
+    images = os.listdir(person_path)
 
-    gallery_images = images[20:]
+    # ===== CHỈ LẤY 20 ẢNH ĐẦU LÀM GALLERY =====
+    gallery_images = images[:20]
+
+    total_images += len(gallery_images)
 
     for img_name in tqdm(gallery_images, desc=f"{person}", leave=False):
 

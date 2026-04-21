@@ -11,12 +11,13 @@ logger = logging.getLogger(__name__)
 class FaceEmbedder:
     """InsightFace buffalo_l → ArcFace 512-d embedding."""
 
-    def __init__(self, det_size=(320, 320)):
+    def __init__(self, det_size=(320, 320), providers=None):
         from insightface.app import FaceAnalysis
-        self.app = FaceAnalysis(name="buffalo_l",
-                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+        if providers is None:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        self.app = FaceAnalysis(name="buffalo_l", providers=providers)
         self.app.prepare(ctx_id=0, det_size=det_size)
-        logger.info("InsightFace buffalo_l loaded")
+        logger.info("InsightFace buffalo_l loaded (providers=%s)", providers)
 
     def extract(self, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
         faces = self.app.get(frame_bgr)

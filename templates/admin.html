@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --primary:#3B82F6;--primary-dark:#2563EB;--primary-light:#DBEAFE;
+  --success:#10B981;--success-light:#D1FAE5;--danger:#EF4444;--danger-light:#FEE2E2;
+  --warning:#F59E0B;--warning-light:#FEF3C7;
+  --bg:#F8FAFC;--white:#FFF;
+  --gray-50:#F9FAFB;--gray-100:#F3F4F6;--gray-200:#E5E7EB;--gray-300:#D1D5DB;
+  --gray-400:#9CA3AF;--gray-500:#6B7280;--gray-600:#4B5563;--gray-700:#374151;
+  --gray-800:#1F2937;--gray-900:#111827;
+  --font:'Be Vietnam Pro',sans-serif;
+  --shadow:0 1px 3px rgba(0,0,0,.1);--shadow-lg:0 10px 15px rgba(0,0,0,.1);
+  --radius:12px;
+}
+body{background:var(--bg);font-family:var(--font);min-height:100vh;display:flex}
+
+/* Sidebar */
+.sidebar{width:260px;background:var(--white);border-right:1px solid var(--gray-200);
+  display:flex;flex-direction:column;position:fixed;top:0;bottom:0;z-index:50}
+.sidebar-header{padding:1.5rem;border-bottom:1px solid var(--gray-200)}
+.sidebar-logo{font-size:1.1rem;font-weight:800;color:var(--gray-900)}
+.sidebar-logo span{color:var(--primary)}
+.sidebar-sub{font-size:.7rem;color:var(--gray-400);margin-top:.15rem}
+.sidebar-nav{flex:1;padding:1rem 0}
+.nav-item{display:flex;align-items:center;gap:.75rem;padding:.7rem 1.5rem;
+  color:var(--gray-600);font-size:.9rem;font-weight:500;cursor:pointer;
+  transition:all .15s;text-decoration:none;border-left:3px solid transparent}
+.nav-item:hover{background:var(--gray-50);color:var(--primary)}
+.nav-item.active{background:var(--primary-light);color:var(--primary-dark);
+  border-left-color:var(--primary);font-weight:600}
+.nav-icon{width:20px;height:20px;opacity:.7}
+.sidebar-footer{padding:1rem 1.5rem;border-top:1px solid var(--gray-200)}
+.user-info{font-size:.8rem;color:var(--gray-500);margin-bottom:.5rem}
+.user-info strong{color:var(--gray-800)}
+.btn-logout{font-family:var(--font);font-size:.8rem;font-weight:600;
+  color:var(--danger);background:none;border:1px solid var(--danger);
+  padding:.4rem 1rem;border-radius:8px;cursor:pointer;transition:all .2s}
+.btn-logout:hover{background:var(--danger-light)}
+
+/* Main */
+.main{flex:1;margin-left:260px;padding:2rem}
+.page-title{font-size:1.5rem;font-weight:800;color:var(--gray-900);margin-bottom:.25rem}
+.page-desc{font-size:.85rem;color:var(--gray-500);margin-bottom:1.5rem}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem}
+.stat-card{background:var(--white);border-radius:var(--radius);padding:1.25rem;box-shadow:var(--shadow)}
+.stat-label{font-size:.75rem;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em}
+.stat-value{font-size:1.75rem;font-weight:800;color:var(--gray-900);margin-top:.25rem}
+.stat-card.primary .stat-value{color:var(--primary)}
+.stat-card.success .stat-value{color:var(--success)}
+.stat-card.warning .stat-value{color:var(--warning)}
+
+/* Table */
+.table-wrap{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.table-header{display:flex;justify-content:space-between;align-items:center;padding:1.25rem 1.5rem;
+  border-bottom:1px solid var(--gray-200)}
+.table-title{font-weight:700;color:var(--gray-800)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:.75rem 1.5rem;font-size:.75rem;font-weight:700;
+  color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;
+  background:var(--gray-50);border-bottom:1px solid var(--gray-200)}
+td{padding:.75rem 1.5rem;font-size:.85rem;color:var(--gray-700);border-bottom:1px solid var(--gray-100)}
+tr:hover td{background:var(--gray-50)}
+.badge{display:inline-block;padding:.15rem .6rem;border-radius:20px;font-size:.7rem;font-weight:600}
+.badge-admin{background:#EDE9FE;color:#7C3AED}
+.badge-user{background:var(--primary-light);color:var(--primary-dark)}
+.badge-yes{background:var(--success-light);color:#065F46}
+.badge-no{background:var(--gray-100);color:var(--gray-500)}
+.action-btn{font-family:var(--font);font-size:.75rem;font-weight:600;padding:.3rem .7rem;
+  border-radius:8px;border:none;cursor:pointer;transition:all .15s;margin-right:.3rem}
+.action-btn.face{background:var(--primary-light);color:var(--primary)}
+.action-btn.face:hover{background:var(--primary);color:white}
+.action-btn.edit{background:var(--warning-light);color:#92400E}
+.action-btn.edit:hover{background:var(--warning);color:white}
+.action-btn.delete{background:var(--danger-light);color:var(--danger)}
+.action-btn.delete:hover{background:var(--danger);color:white}
+
+/* Sections */
+.section{display:none}
+.section.active{display:block}
+
+/* Btn */
+.btn{font-family:var(--font);font-size:.85rem;font-weight:600;
+  padding:.6rem 1.25rem;border-radius:var(--radius);border:none;cursor:pointer;
+  display:inline-flex;align-items:center;gap:.4rem;transition:all .2s}
+.btn-primary{background:var(--primary);color:white}
+.btn-primary:hover{background:var(--primary-dark)}
+.btn-sm{font-size:.8rem;padding:.45rem .9rem;border-radius:8px}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);
+  z-index:100;align-items:center;justify-content:center;padding:1rem}
+.modal-overlay.show{display:flex}
+.modal{background:var(--white);border-radius:16px;padding:2rem;width:100%;max-width:480px;
+  box-shadow:0 20px 40px rgba(0,0,0,.15)}
+.modal h2{font-size:1.1rem;font-weight:700;color:var(--gray-900);margin-bottom:1.25rem}
+.modal .form-group{margin-bottom:.75rem}
+.modal label{font-size:.75rem;font-weight:600;color:var(--gray-600);display:block;margin-bottom:.2rem}
+.modal input,.modal select{width:100%;padding:.6rem .8rem;border:1.5px solid var(--gray-200);
+  border-radius:8px;font-family:var(--font);font-size:.85rem;outline:none;transition:all .2s}
+.modal input:focus,.modal select:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(59,130,246,.1)}
+.modal-actions{display:flex;gap:.75rem;justify-content:flex-end;margin-top:1.25rem}
+.btn-ghost{background:var(--gray-100);color:var(--gray-700);font-family:var(--font);
+  font-size:.85rem;font-weight:600;padding:.6rem 1.25rem;border-radius:var(--radius);
+  border:none;cursor:pointer}
+.btn-ghost:hover{background:var(--gray-200)}
+
+/* Verify section — camera nhỏ, bbox + tên/MSV trên khung */
+.verify-area-verify{max-width:570px}
+.cam-box{background:#111;border-radius:var(--radius);overflow:hidden;aspect-ratio:4/3;position:relative;
+  box-shadow:var(--shadow-lg);width:100%}
+.cam-box video#verify-video{
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  z-index:0;pointer-events:none;background:#111;
+}
+#verify-canvas{
+  position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;
+  display:block;background:transparent;
+}
+.verify-toolbar{margin-top:.75rem;display:flex;gap:.75rem;flex-wrap:wrap;align-items:center}
+.verify-hint-inline{font-size:.8rem;color:var(--gray-500)}
+
+.msg-box{padding:.7rem 1rem;border-radius:var(--radius);font-size:.85rem;margin-bottom:1rem;display:none}
+.msg-box.show{display:block}
+.msg-box.ok{background:#D1FAE5;color:#065F46}
+.msg-box.err{background:#FEE2E2;color:#991B1B}
+
+.spinner{display:inline-block;width:14px;height:14px;
+  border:2px solid rgba(59,130,246,.3);border-top-color:var(--primary);
+  border-radius:50%;animation:spin .5s linear infinite;margin-right:.4rem;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-logo">🎓 <span>FaceCheck</span></div>
+    <div class="sidebar-sub">Quản trị hệ thống</div>
+  </div>
+  <div class="sidebar-nav">
+    <a class="nav-item active" data-section="users">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+      Quản lý Sinh viên
+    </a>
+    <a class="nav-item" data-section="verify">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 11.75c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zm6 0c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-.29.02-.58.05-.86 2.36-1.05 4.23-2.98 5.21-5.37C11.07 8.33 14.05 10 17.42 10c.78 0 1.53-.09 2.25-.26.21.71.33 1.47.33 2.26 0 4.41-3.59 8-8 8z"/></svg>
+      Xác minh Khuôn mặt
+    </a>
+  </div>
+  <div class="sidebar-footer">
+    <div class="user-info">Đang đăng nhập: <strong id="sidebar-username">Admin</strong></div>
+    <button class="btn-logout" onclick="logout()">Đăng xuất</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Section: Users -->
+  <div class="section active" id="sec-users">
+    <div class="page-title">Quản lý Sinh viên</div>
+    <div class="page-desc">Quản lý tài khoản và khuôn mặt sinh viên</div>
+
+    <div class="stats" id="stats">
+      <div class="stat-card primary"><div class="stat-label">Tổng sinh viên</div><div class="stat-value" id="st-total">-</div></div>
+      <div class="stat-card success"><div class="stat-label">Đã đăng ký mặt</div><div class="stat-value" id="st-face">-</div></div>
+      <div class="stat-card warning"><div class="stat-label">Chưa đăng ký mặt</div><div class="stat-value" id="st-noface">-</div></div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-header">
+        <span class="table-title">Danh sách tài khoản</span>
+        <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Thêm mới</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Username</th><th>Họ tên</th><th>MSSV</th><th>Khuôn mặt</th><th>Hành động</th></tr>
+        </thead>
+        <tbody id="user-tbody"><tr><td colspan="6" style="text-align:center;color:var(--gray-400)"><span class="spinner"></span> Đang tải...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Section: Verify -->
+  <div class="section" id="sec-verify">
+    <div class="page-title">Xác minh Khuôn mặt</div>
+    <div class="page-desc">Nhiều người trong khung: mỗi mặt một bbox — họ tên kèm <strong>điểm (cosine)</strong>, dòng dưới là MSV.</div>
+    <div class="verify-area-verify">
+      <div class="cam-box">
+        <video id="verify-video" autoplay playsinline muted></video>
+        <canvas id="verify-canvas" width="640" height="480"></canvas>
+      </div>
+      <div class="verify-toolbar">
+        <button class="btn btn-primary" id="btn-start-verify" onclick="startVerifyRealtime()">📷 Bật camera &amp; xác minh</button>
+        <button class="btn btn-ghost" id="btn-stop-verify" onclick="stopVerifyRealtime()" style="display:none">⏹ Dừng</button>
+        <span class="verify-hint-inline" id="verify-toolbar-hint">Nhấn bật camera để quét liên tục — kết quả vẽ trên khung.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create/Edit Modal -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal">
+    <h2 id="modal-title">Thêm sinh viên</h2>
+    <input type="hidden" id="m-id">
+    <div class="form-group"><label>Username</label><input id="m-username" placeholder="username"></div>
+    <div class="form-group"><label>Email</label><input id="m-email" placeholder="email@example.com"></div>
+    <div class="form-group"><label>Họ tên</label><input id="m-fullname" placeholder="Nguyễn Văn A"></div>
+    <div class="form-group"><label>MSSV</label><input id="m-studentid" placeholder="2021001234"></div>
+    <div class="form-group"><label>Mật khẩu</label><input type="password" id="m-password" placeholder="Để trống nếu không đổi"></div>
+    <div class="msg-box" id="modal-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal()">Hủy</button>
+      <button class="btn btn-primary" id="btn-save" onclick="saveUser()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = ''
+let allUsers = []
+
+// ── Auth check ──
+const token = localStorage.getItem('token')
+const user = JSON.parse(localStorage.getItem('user')||'{}')
+if(!token || user.role !== 'admin'){ location.href='/login' }
+document.getElementById('sidebar-username').textContent = user.username||'Admin'
+
+function logout(){ localStorage.clear(); location.href='/' }
+
+// ── Navigation ──
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click',()=>{
+    if(item.dataset.section!=='verify') stopVerifyRealtime()
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'))
+    item.classList.add('active')
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
+    document.getElementById('sec-'+item.dataset.section).classList.add('active')
+  })
+})
+
+// ── Load users ──
+async function loadUsers(){
+  try{
+    const res=await fetch('/api/admin/users',{headers:{'Authorization':'Bearer '+token}})
+    const data=await res.json()
+    if(!res.ok) return
+    allUsers=data.users||[]
+    renderUsers()
+    updateStats()
+  }catch(e){}
+}
+
+function renderUsers(){
+  const tbody=document.getElementById('user-tbody')
+  if(!allUsers.length){
+    tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Chưa có sinh viên nào</td></tr>'
+    return
+  }
+  tbody.innerHTML=allUsers.map(u=>`<tr>
+    <td>${u.id}</td>
+    <td><strong>${u.username}</strong></td>
+    <td>${u.full_name||'—'}</td>
+    <td>${u.student_id||'—'}</td>
+    <td><span class="badge badge-${u.face_registered?'yes':'no'}">${u.face_registered?'✓ Đã đăng ký':'✗ Chưa'}</span></td>
+    <td>
+      <button class="action-btn face" onclick="goFaceRegister(${u.id})" title="Đăng ký mặt">📷</button>
+      <button class="action-btn edit" onclick="openEditModal(${u.id})" title="Sửa">✏️</button>
+      <button class="action-btn delete" onclick="deleteUser(${u.id},'${u.username}')" title="Xóa">🗑️</button>
+    </td>
+  </tr>`).join('')
+}
+
+function updateStats(){
+  document.getElementById('st-total').textContent=allUsers.length
+  document.getElementById('st-face').textContent=allUsers.filter(u=>u.face_registered).length
+  document.getElementById('st-noface').textContent=allUsers.filter(u=>!u.face_registered).length
+}
+
+// ── CRUD Modal ──
+function openCreateModal(){
+  document.getElementById('modal-title').textContent='Thêm sinh viên mới'
+  document.getElementById('m-id').value=''
+  document.getElementById('m-username').value=''
+  document.getElementById('m-email').value=''
+  document.getElementById('m-fullname').value=''
+  document.getElementById('m-studentid').value=''
+  document.getElementById('m-password').value=''
+  document.getElementById('m-username').disabled=false
+  hideMsg()
+  document.getElementById('modal-user').classList.add('show')
+}
+
+function openEditModal(id){
+  const u=allUsers.find(x=>x.id===id)
+  if(!u) return
+  document.getElementById('modal-title').textContent='Sửa thông tin: '+u.username
+  document.getElementById('m-id').value=id
+  document.getElementById('m-username').value=u.username
+  document.getElementById('m-email').value=u.email||''
+  document.getElementById('m-fullname').value=u.full_name||''
+  document.getElementById('m-studentid').value=u.student_id||''
+  document.getElementById('m-password').value=''
+  document.getElementById('m-username').disabled=true
+  hideMsg()
+  document.getElementById('modal-user').classList.add('show')
+}
+
+function closeModal(){document.getElementById('modal-user').classList.remove('show')}
+
+function hideMsg(){const m=document.getElementById('modal-msg');m.className='msg-box';m.style.display='none'}
+function showModalMsg(t,type){const m=document.getElementById('modal-msg');m.textContent=t;m.className='msg-box show '+type}
+
+async function saveUser(){
+  const id=document.getElementById('m-id').value
+  const body={}
+  body.username=document.getElementById('m-username').value.trim()
+  body.email=document.getElementById('m-email').value.trim()
+  body.full_name=document.getElementById('m-fullname').value.trim()
+  body.student_id=document.getElementById('m-studentid').value.trim()
+  const pwd=document.getElementById('m-password').value
+  if(pwd) body.password=pwd
+
+  if(!body.username||!body.email){showModalMsg('Username và Email bắt buộc','err');return}
+
+  try{
+    let res
+    if(id){
+      res=await fetch(`/api/admin/users/${id}`,{
+        method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+        body:JSON.stringify(body)
+      })
+    }else{
+      if(!pwd){showModalMsg('Mật khẩu bắt buộc khi tạo mới','err');return}
+      res=await fetch('/api/admin/users',{
+        method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+        body:JSON.stringify(body)
+      })
+    }
+    const data=await res.json()
+    if(!res.ok){showModalMsg(data.detail||'Lỗi','err');return}
+    closeModal()
+    loadUsers()
+  }catch(e){showModalMsg('Lỗi kết nối','err')}
+}
+
+async function deleteUser(id,name){
+  if(!confirm(`Xóa user "${name}"? Dữ liệu khuôn mặt cũng sẽ bị xóa.`)) return
+  try{
+    const res=await fetch(`/api/admin/users/${id}`,{
+      method:'DELETE',headers:{'Authorization':'Bearer '+token}
+    })
+    if(res.ok) loadUsers()
+  }catch(e){}
+}
+
+function goFaceRegister(uid){
+  location.href=`/face-register?user_id=${uid}`
+}
+
+// ── Verify: vẽ lên canvas như OpenCV (video + FPS + tên/MSV hoặc trạng thái trong khung) ──
+let verifyStream=null
+let verifyRunning=false
+let verifySending=false
+let verifyRaf=null
+/* Canvas mã hoá frame tái sử dụng (OffscreenCanvas nếu hỗ trợ) */
+let verifyEncodeCanvas=null
+let verifyEncodeCtx=null
+let verifyEncodeIsOffscreen=false
+// FPS xử lý: số lần /api/face/verify hoàn tất mỗi giây (bbox/detect/embed end-to-end)
+let verifyProcFps=0
+let verifyLastProcAt=0
+let verifyDevice=''
+let verifyState={faces:[],bottomText:'Đang quét…',match:null}
+let verifyStarting=false
+
+async function fetchVerifyDevice(){
+  try{
+    const r=await fetch('/api/face/verify/device')
+    const d=await r.json()
+    const ifc=d&&d.insightface?String(d.insightface):'?'
+    const fas=d&&d.fas?String(d.fas):'?'
+    verifyDevice=`InsightFace: ${ifc} | FAS: ${fas}`
+  }catch(_){
+    verifyDevice=''
+  }
+}
+
+function formatScoreVi(s){
+  if(s==null||s==='') return ''
+  const n=Number(s)
+  if(!isFinite(n)) return ''
+  return n.toFixed(3).replace('.',',')
+}
+
+function verifyDrawLoop(){
+  try{
+  const video=document.getElementById('verify-video')
+  const canvas=document.getElementById('verify-canvas')
+  if(!video||!canvas){
+    /* luôn RAF ở cuối hàm */
+  }else{
+  const vw=video.videoWidth
+  const vh=video.videoHeight
+  const w=vw||640
+  const h=vh||480
+  if(canvas.width!==w||canvas.height!==h){
+    canvas.width=w
+    canvas.height=h
+  }
+  const ctx=canvas.getContext('2d')
+  /* Hình camera từ <video>; canvas overlay trong suốt (không dùng video ẩn + drawImage — dễ toàn đen trên một số browser) */
+  ctx.clearRect(0,0,w,h)
+  if(!vw||!vh){
+    /* chờ metadata stream */
+  }else{
+
+  const scale=Math.max(w/640,0.45)
+  const pad=Math.round(14*scale)
+
+  function strokeFillText(txt,x,y,fill,strokeW,baseline){
+    const s=txt==null?'':String(txt)
+    if(!s) return
+    ctx.textBaseline=baseline||'top'
+    ctx.lineWidth=strokeW||Math.max(2,Math.round(2*scale))
+    ctx.strokeStyle='#000'
+    ctx.strokeText(s,x,y)
+    ctx.fillStyle=fill
+    ctx.fillText(s,x,y)
+  }
+
+  ctx.font=`bold ${Math.round(20*scale)}px sans-serif`
+  ctx.textBaseline='top'
+  /* FPS xử lý (detect + FAS + Qdrant) — giống test_va_crop_face */
+  const fpsText='FPS: '+(verifyProcFps>0?verifyProcFps.toFixed(1):'0')
+  strokeFillText(fpsText,pad,pad,'#00FFFF')
+  if(verifyDevice){
+    ctx.font=`bold ${Math.round(14*scale)}px sans-serif`
+    const fpsH=measureTextHeight(ctx,fpsText)
+    strokeFillText(verifyDevice,pad,pad+fpsH+Math.round(3*scale),'#CCFFCC',Math.max(2,Math.round(2*scale)),'top')
+  }
+
+  const faces=verifyState.faces||[]
+  if(faces.length){
+    const fsN=Math.max(13,Math.round(15*scale))
+    const fsM=Math.max(11,Math.round(13*scale))
+    const gap=Math.round(3*scale)
+    for(let fi=0;fi<faces.length;fi++){
+      const f=faces[fi]
+      const bb=f&&f.bbox
+      if(!bb||bb.length!==4) continue
+      const x1=+bb[0],y1=+bb[1],x2=+bb[2],y2=+bb[3]
+      const bw=x2-x1,bh=y2-y1
+      const bboxOk=bw>0&&bh>0&&isFinite(bw)&&isFinite(bh)&&isFinite(x1)&&isFinite(y1)
+      if(!bboxOk) continue
+      let stroke='#FFCC00'
+      if(f.match===true) stroke='#00FF00'
+      else if(f.match===false) stroke='#FF4444'
+      ctx.strokeStyle=stroke
+      ctx.lineWidth=Math.max(2,Math.round(2*scale))
+      ctx.strokeRect(x1,y1,bw,bh)
+
+      const sc=formatScoreVi(f.score)
+      if(f.match===true&&f.user){
+        const n=f.user.full_name!=null?String(f.user.full_name):'—'
+        const line1=sc?`${n}  (${sc})`:n
+        const line2='MSV: '+(f.user.student_id!=null?String(f.user.student_id):'—')
+        const lines=[line1,line2]
+        const fonts=[`bold ${fsN}px sans-serif`,`${fsM}px sans-serif`]
+        const colors=['#00FF00','#CCFFCC']
+        let blockH=0
+        for(let i=0;i<lines.length;i++){
+          ctx.font=fonts[i]
+          blockH+=measureTextHeight(ctx,lines[i])+gap
+        }
+        let yt=y1-4-blockH
+        if(yt<pad){ yt=y2+6 }
+        for(let i=0;i<lines.length;i++){
+          ctx.font=fonts[i]
+          strokeFillText(lines[i],x1,yt,colors[i],Math.max(2,Math.round(3*scale)),'top')
+          yt+=measureTextHeight(ctx,lines[i])+gap
+        }
+      }else{
+        const raw=((f.message||'').trim().slice(0,48))||'—'
+        const line1=sc?`${raw}  (${sc})`:raw
+        ctx.font=`bold ${fsN}px sans-serif`
+        let yt=y1-4-measureTextHeight(ctx,line1)
+        if(yt<pad){ yt=y2+6 }
+        strokeFillText(line1,x1,yt,'#FF8888',Math.max(2,Math.round(3*scale)),'top')
+      }
+    }
+  }else{
+    ctx.font=`bold ${Math.round(17*scale)}px sans-serif`
+    ctx.textBaseline='bottom'
+    const hint=(verifyState.bottomText!=null&&verifyState.bottomText!=='')
+      ?verifyState.bottomText
+      :(verifyState.match===null?'Đang quét…':'')
+    if(hint){
+      strokeFillText(hint,pad,h-pad,hint.includes('Đang')?'#FFCC00':'#FF6666',Math.max(2,Math.round(2*scale)),'bottom')
+    }
+  }
+  }}
+  }catch(e){
+    console.error('verifyDrawLoop',e)
+  }
+  verifyRaf=requestAnimationFrame(verifyDrawLoop)
+}
+
+function measureTextHeight(ctx,text){
+  const m=ctx.measureText(String(text==null?'':text))
+  return(m.actualBoundingBoxAscent||12)+(m.actualBoundingBoxDescent||4)
+}
+
+async function startVerifyRealtime(){
+  if(verifyRunning||verifyStarting) return
+  verifyStarting=true
+  const video=document.getElementById('verify-video')
+  const hint=document.getElementById('verify-toolbar-hint')
+  verifyState={faces:[],bottomText:'Đang quét…',match:null}
+  verifyProcFps=0
+  verifyLastProcAt=0
+  fetchVerifyDevice()
+  try{
+    verifyStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480}})
+    video.srcObject=verifyStream
+  }catch(e){
+    verifyStarting=false
+    alert('Không mở được camera')
+    return
+  }
+  verifyStarting=false
+  document.getElementById('btn-start-verify').style.display='none'
+  document.getElementById('btn-stop-verify').style.display='inline-flex'
+  if(hint) hint.textContent='Đang quét — kết quả hiển thị trên khung hình.'
+  try{ await video.play() }catch(_){}
+  if(verifyRaf) cancelAnimationFrame(verifyRaf)
+  verifyRaf=requestAnimationFrame(verifyDrawLoop)
+
+  /* Chạy liên tục (serialized): gửi frame → nhận → gửi tiếp
+     Bbox trễ chỉ bằng 1 roundtrip, FPS hiển thị = số frame thực sự xử lý/giây */
+  verifyRunning=true
+  scheduleNextTick(0)
+}
+
+function scheduleNextTick(delayMs){
+  if(!verifyRunning) return
+  setTimeout(async ()=>{
+    if(!verifyRunning) return
+    await tickVerifyFrame()
+    scheduleNextTick(0)
+  },Math.max(0,delayMs|0))
+}
+
+function stopVerifyRealtime(){
+  verifyRunning=false
+  if(verifyRaf){
+    cancelAnimationFrame(verifyRaf)
+    verifyRaf=null
+  }
+  verifySending=false
+  verifyProcFps=0
+  verifyLastProcAt=0
+  if(verifyStream&&verifyStream.getTracks){
+    verifyStream.getTracks().forEach(t=>t.stop())
+    verifyStream=null
+  }
+  const video=document.getElementById('verify-video')
+  if(video) video.srcObject=null
+  const canvas=document.getElementById('verify-canvas')
+  if(canvas){
+    const ctx=canvas.getContext('2d')
+    ctx.clearRect(0,0,canvas.width,canvas.height)
+  }
+  document.getElementById('btn-start-verify').style.display='inline-flex'
+  document.getElementById('btn-stop-verify').style.display='none'
+  const hint=document.getElementById('verify-toolbar-hint')
+  if(hint) hint.textContent='Nhấn bật camera để quét liên tục — kết quả vẽ trên khung.'
+}
+
+function ensureEncodeCanvas(w,h){
+  if(!verifyEncodeCanvas){
+    if(typeof OffscreenCanvas!=='undefined'){
+      verifyEncodeCanvas=new OffscreenCanvas(w,h)
+      verifyEncodeIsOffscreen=true
+    }else{
+      verifyEncodeCanvas=document.createElement('canvas')
+      verifyEncodeIsOffscreen=false
+    }
+    verifyEncodeCtx=verifyEncodeCanvas.getContext('2d')
+  }
+  if(verifyEncodeCanvas.width!==w) verifyEncodeCanvas.width=w
+  if(verifyEncodeCanvas.height!==h) verifyEncodeCanvas.height=h
+}
+
+async function encodeVideoFrame(video,quality){
+  const w=video.videoWidth,h=video.videoHeight
+  ensureEncodeCanvas(w,h)
+  verifyEncodeCtx.drawImage(video,0,0,w,h)
+  if(verifyEncodeIsOffscreen&&verifyEncodeCanvas.convertToBlob){
+    return verifyEncodeCanvas.convertToBlob({type:'image/jpeg',quality})
+  }
+  return new Promise((resolve,reject)=>{
+    try{
+      verifyEncodeCanvas.toBlob(b=>{ if(b)resolve(b); else reject(new Error('toBlob')) },'image/jpeg',quality)
+    }catch(e){ reject(e) }
+  })
+}
+
+async function tickVerifyFrame(){
+  if(verifySending) return
+  const video=document.getElementById('verify-video')
+  if(!video||!video.videoWidth) return
+  verifySending=true
+  const ac=new AbortController()
+  const to=setTimeout(()=>ac.abort(),25000)
+  try{
+    const blob=await encodeVideoFrame(video,1.0)
+    const fd=new FormData()
+    fd.append('frame',blob,'frame.jpg')
+    const res=await fetch('/api/face/verify',{method:'POST',body:fd,signal:ac.signal})
+    clearTimeout(to)
+    const data=await res.json()
+    const faces=Array.isArray(data.faces)?data.faces:[]
+    verifyState={
+      faces,
+      bottomText:faces.length?'' : String(data.message||''),
+      match:!!data.match,
+    }
+    /* Đo FPS xử lý thật: khoảng cách giữa 2 phản hồi thành công */
+    const now=performance.now()
+    if(verifyLastProcAt>0){
+      const dt=(now-verifyLastProcAt)/1000
+      if(dt>0&&dt<5){
+        const inst=1/dt
+        verifyProcFps=verifyProcFps>0?(0.8*verifyProcFps+0.2*inst):inst
+      }
+    }
+    verifyLastProcAt=now
+  }catch(e){
+    clearTimeout(to)
+    const aborted=ac.signal.aborted
+    verifyState={
+      faces:[],
+      bottomText:aborted?'Hết thời chờ server (thử lại)':'Lỗi kết nối server',
+      match:false,
+    }
+  }finally{
+    clearTimeout(to)
+    verifySending=false
+  }
+}
+
+function escapeHtml(s){
+  const d=document.createElement('div')
+  d.textContent=s
+  return d.innerHTML
+}
+
+// ── Init ──
+loadUsers()
+</script>
+</body>
+</html>

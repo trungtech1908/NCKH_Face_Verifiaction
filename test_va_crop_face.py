@@ -48,7 +48,7 @@ def _infer_fas_device(fas_model) -> str:
 device_label = f"InsightFace: {_infer_ort_device(app)} | FAS: {_infer_fas_device(fas)}"
 
 # ================== BIẾN HỆ THỐNG ==================
-prev_time, last_embedding_time = 0, 0
+prev_time = 0
 next_id = 0
 face_results, face_statuses, last_face_centers = {}, {}, {}
 
@@ -58,19 +58,11 @@ def query_qdrant_async(faces_data):
         res = client.query_points(collection_name=COLLECTION_NAME, query=emb.tolist(), limit=5)
         
         name = "Unknown"
-        best_score = None
-        # Nâng ngưỡng từ 0.5 cũ lên 0.7 (đây là mức "vàng" của InsightFace)
         valid = [p.payload.get("username", "Unknown") for p in res.points if p.score >= QDRANT_SCORE_THRESHOLD]
-        if res.points:
-            try:
-                best_score = max(p.score for p in res.points)
-            except Exception:
-                best_score = None
-        
         if valid:
             name, count = Counter(valid).most_common(1)[0]
             if count < 2: name = "Unknown"
-        face_results[f_id] = (name, best_score)
+        face_results[f_id] = name
 
 # ================== MAIN LOOP ==================
 cap = cv2.VideoCapture(0)
@@ -99,24 +91,23 @@ while True:
         new_centers[matched_id] = (cx, cy)
     last_face_centers = new_centers.copy()
 
-    # 2. FAS & RECOGNITION (3 giây/lần)
-    if time.time() - last_embedding_time > 0.5:
-        to_query = []
-        for face, fid in zip(faces, curr_ids):
-            i27 = get_crop_face(frame, face.bbox, 2.7)
-            i40 = get_crop_face(frame, face.bbox, 4.0)
-            label, score = fas.predict(i27, i40)
-            face_statuses[fid] = "Real" if (label == 1 and score > 0.9) else "Fake"
-            if face_statuses[fid] == "Real":
-                to_query.append((fid, face.embedding / np.linalg.norm(face.embedding)))
-        
-        if to_query: threading.Thread(target=query_qdrant_async, args=(to_query,)).start()
-        last_embedding_time = time.time()
+    # 2. FAS & RECOGNITION — mỗi frame (không throttle): chỉ Real mới gửi embedding lên Qdrant
+    to_query = []
+    for face, fid in zip(faces, curr_ids):
+        i27 = get_crop_face(frame, face.bbox, 2.7)
+        i40 = get_crop_face(frame, face.bbox, 4.0)
+        label, score = fas.predict(i27, i40)
+        face_statuses[fid] = "Real" if (label == 1 and score > 0.9) else "Fake"
+        if face_statuses[fid] == "Real":
+            to_query.append((fid, face.embedding / np.linalg.norm(face.embedding)))
+
+    if to_query:
+        threading.Thread(target=query_qdrant_async, args=(to_query,)).start()
 
     # 3. VẼ UI
     for face, fid in zip(faces, curr_ids):
         x1, y1, x2, y2 = map(int, face.bbox)
-        name, score = face_results.get(fid, ("Searching...", None))
+        name = face_results.get(fid, "Searching...")
         status = face_statuses.get(fid, "Scanning...")
         
         is_unknown = str(name).strip().lower() in {"unknown", "unknow"}
@@ -130,10 +121,7 @@ while True:
             color = (0, 0, 255) # Unknown cũng đỏ
 
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-        label = f"{name}"
-        if score is not None:
-            label = f"{name} ({score:.2f})".replace(".", ",")
-        cv2.putText(frame, label, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(frame, str(name), (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
         cv2.putText(frame, f"STATUS: {status}", (x1, y2+25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
     # 4. FPS
