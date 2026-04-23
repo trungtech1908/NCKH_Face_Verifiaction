@@ -1,0 +1,336 @@
+================================================================================
+LUỒNG HOẠT ĐỘNG HỆ THỐNG ĐIỂM DANH BẰNG KHUÔN MẶT
+================================================================================
+
+0. TỔNG QUAN KIẾN TRÚC
+--------------------------------------------------------------------------------
+- Backend       : FastAPI (Python)
+- DB quan hệ    : MySQL   → users, exams, exam_students
+- Vector DB     : Qdrant  → 25 embedding thô / user (5 hướng × 5 frame,
+                              512-d, COSINE distance)
+- Model         : InsightFace (detect + embedding) + FAS (anti-spoof)
+- Xác thực      : JWT (Bearer token) + role = {admin | user}
+- Frontend      : 5 trang Jinja2: index, login, register, admin, user_dashboard,
+                  face_register.
+
+Dữ liệu chính:
+- users          : id, username, email, full_name, student_id, password_hash,
+                   role, face_registered, created_at
+- exams          : id, subject, exam_date, start_time, end_time, room, note
+- exam_students  : id, exam_id, user_id, attended_at (NULL nếu chưa điểm danh)
+- Qdrant point   : id=hash(user_id, direction, frame_idx) — 25 point/user,
+                   vector=embedding thô 1 frame (chưa L2-norm),
+                   payload={ user_id }
+
+Hai role:
+- admin : CRUD sinh viên, CRUD lịch thi, điểm danh, xác minh khuôn mặt bất kỳ.
+- user  : xem profile, đăng ký khuôn mặt (1 lần duy nhất), xem lịch thi
+          + trạng thái điểm danh của bản thân.
+
+================================================================================
+1. LUỒNG CHUNG KHI KHÔNG ĐĂNG NHẬP
+================================================================================
+/                → landing page (giới thiệu, nút Đăng ký / Đăng nhập)
+/register        → form đăng ký tài khoản
+/login           → form đăng nhập
+
+(1) Đăng ký tài khoản
+    client POST /api/register  { username, email, password, full_name, student_id }
+    - Validate + kiểm tra trùng username / email / student_id
+    - Mật khẩu → bcrypt hash
+    - role mặc định = "user", face_registered = false
+    - Lưu vào users, trả message thành công.
+
+(2) Đăng nhập
+    client POST /api/login  { username, password }
+    - So khớp bcrypt
+    - Sinh JWT (sub=user_id, role)
+    - Client lưu token + user info vào localStorage
+    - Điều hướng:
+        role=admin → /admin
+        role=user  → /user
+
+Mọi API cần bảo vệ đều check `Authorization: Bearer <token>`:
+- _get_current_user : yêu cầu token hợp lệ
+- _require_admin    : token hợp lệ + role == admin
+
+================================================================================
+2. LUỒNG NGƯỜI DÙNG (role = user)
+================================================================================
+
+2.1. Xem profile
+    GET /user  →  template user_dashboard.html
+    JS gọi GET /api/me  → trả id, username, email, full_name, student_id,
+                           role, face_registered, created_at.
+
+2.2. Đăng ký khuôn mặt (chỉ 1 lần duy nhất)
+    Điều kiện: face_registered == false
+    Flow:
+      a) Client bấm "Đăng ký ngay" → /face-register?user_id=...
+      b) POST /api/face/start/{user_id}
+         - server tạo FaceRegistrationSession in-memory, trả session_id.
+         - session yêu cầu chụp đủ 5 góc: FRONT, LEFT, RIGHT, UP, DOWN
+           (mediapipe FaceMesh để ước lượng yaw/pitch/roll).
+      c) Mỗi 0.2–0.5s client gửi POST /api/face/{sid}/frame (multipart image)
+         - server decode JPEG, chạy InsightFace detect + embedding.
+         - với góc FRONT: thêm check OCCLUSION (che mặt: khẩu trang, kính đen,
+           tay) + FAS (chặn ảnh 2D / màn hình). Nếu phát hiện che/giả → từ chối
+           frame, trả message cảnh báo, KHÔNG cho đăng ký tiếp.
+         - nếu qua hết: lưu embedding góc đó vào session, đánh dấu góc đã xong
+           và trả tên góc + tick xanh cho UI.
+      d) Khi đủ 5 góc → POST /api/face/{sid}/finish
+         - Same-person safety: extract best-embedding của FRONT, rồi so cosine
+           với best-embedding của 4 góc còn lại; nếu góc nào cosine < ngưỡng
+           thì từ chối (tránh đăng ký nhầm người ở góc phụ).
+         - Tính 1 embedding trung bình (mean 5 hướng, có lọc outlier bằng
+           cosine) — nhưng CHỈ để kiểm tra trùng khuôn mặt với các user khác
+           đang có trong Qdrant (duplicate check). Vector trung bình này
+           KHÔNG được lưu.
+         - Xoá điểm cũ (nếu có) rồi upsert 25 point thô (5 hướng × 5 frame)
+           lên Qdrant: id=hash(user_id, direction, frame_idx),
+                       vector = embedding THÔ của frame đó (không L2-norm),
+                       payload = { user_id }.
+           → collection Qdrant dùng Distance.COSINE nên Qdrant tự chuẩn hoá
+             vector khi search, không cần normalize client-side.
+         - users.face_registered = true. Xoá session. Trả success.
+      e) Nếu đã face_registered rồi → toàn bộ /api/face/* trả lỗi 400
+         "Khuôn mặt đã được đăng ký, không thể đăng ký lại".
+
+2.3. Xem lịch thi cá nhân  (mới)
+    GET /api/me/exams  → list lịch thi mà user có mặt trong exam_students,
+                         kèm attended_at riêng của user.
+    UI phân 3 tab:
+      - Sắp tới  : upcoming + ongoing, sort theo ngày/giờ tăng dần.
+      - Đã qua   : finished.
+      - Tất cả   : hiển thị hết, DESC theo ngày.
+    Trạng thái mỗi item:
+      - Đã có attended_at & attended_at <= start_time : "✓ Đúng giờ".
+      - Đã có attended_at & attended_at >  start_time : "⏱ Muộn N phút".
+      - Chưa attended & exam đã kết thúc               : "✗ Vắng".
+      - Chưa attended & now < start_time                : "🕓 Sắp tới".
+      - Chưa attended & start_time ≤ now ≤ end_time     : "🟡 Đang diễn ra".
+
+2.4. Đăng xuất
+    Client xoá localStorage, chuyển về /.
+
+================================================================================
+3. LUỒNG ADMIN (role = admin)
+================================================================================
+/admin  →  template admin.html, có 4 section chính:
+    (A) Sinh viên        — CRUD user
+    (B) Xác minh         — verify bất kỳ khuôn mặt bằng camera
+    (C) Lịch thi         — CRUD lịch thi + gán SV
+    (D) Điểm danh        — chọn lịch → bật camera → tự ghi attended_at
+
+3.A. QUẢN LÝ SINH VIÊN
+--------------------------------------------------------------------------------
+Admin chỉ thấy các account role = "user" (không CRUD admin khác).
+
+- GET   /api/admin/users
+- POST  /api/admin/users            tạo sinh viên (chưa có mặt)
+- PUT   /api/admin/users/{id}       sửa thông tin, có thể đổi password
+- DELETE/api/admin/users/{id}       → xoá user, xoá embedding trong Qdrant
+                                      (cascade → exam_students cũng xoá)
+- POST  /api/admin/users/{id}/face-reset
+    Khi SV đã đăng ký mặt nhưng admin muốn cho đăng ký lại:
+      - xoá point Qdrant, users.face_registered=false.
+      - SV đăng nhập sẽ thấy "Chưa đăng ký" và đăng ký lại.
+
+Admin cũng có thể chuyển qua /face-register?user_id=... để tự đăng ký khuôn mặt
+hộ sinh viên.
+
+3.B. XÁC MINH KHUÔN MẶT (1 lần)
+--------------------------------------------------------------------------------
+Không liên quan tới lịch thi — dùng để kiểm tra "ai đây".
+
+Flow trong UI:
+  a) Admin vào tab Xác minh, bật camera.
+  b) Mỗi frame (throttle theo FPS) → POST /api/face/verify
+     - Server detect + embedding.
+     - Nếu nhiều khuôn mặt: xử lý từng cái, trả list kết quả.
+     - Với mỗi khuôn mặt:
+         * Check OCCLUSION → nếu che: trả badge "che mặt", không tra Qdrant.
+         * Check FAS       → nếu giả: trả badge "ảnh 2D/màn hình".
+         * Nếu OK: search top-5 Qdrant (cosine), lọc score ≥ 0.6, majority
+           vote theo user_id (≥ 2 hit cùng user_id mới công nhận). Điểm
+           hiển thị = max score trong các hit của user thắng. Nếu không đủ
+           vote: Unknown (hiển thị max score chung).
+     - Server trả kèm: device (cuda/cpu), fps xử lý.
+  c) Client vẽ bbox + label + score trực tiếp lên canvas phủ camera (vàng =
+     không match, xanh = match, đỏ = occlusion/fake).
+  d) Góc trên canvas hiển thị: FPS xử lý, device, số mặt thấy.
+
+3.C. QUẢN LÝ LỊCH THI
+--------------------------------------------------------------------------------
+Endpoints:
+- GET    /api/admin/exams
+- GET    /api/admin/exams/{id}        chi tiết + danh sách SV + attended_at
+- POST   /api/admin/exams             tạo mới
+- PUT    /api/admin/exams/{id}        cập nhật
+- DELETE /api/admin/exams/{id}        xoá (cascade exam_students)
+
+Dữ liệu payload: subject, exam_date (YYYY-MM-DD), start_time (HH:MM),
+                 end_time (HH:MM), room, note, student_ids[].
+
+Validate khi TẠO MỚI:
+  1) subject, exam_date, start_time, end_time, room bắt buộc.
+  2) end_time > start_time.
+  3) exam_date không ở quá khứ.
+  4) Nếu exam_date == hôm nay → start_time ≥ now + 30 phút.
+     Nếu exam_date > hôm nay → giờ nào cũng được.
+  5) Không trùng phòng trùng giờ:
+        cùng exam_date, cùng room, (existing.start<new.end AND existing.end>new.start)
+  6) Không trùng giờ cho sinh viên:
+        với mỗi student_id sẽ gán, kiểm tra SV đó đã nằm trong lịch khác có
+        exam_date trùng và khoảng giờ chồng chéo không → báo lỗi chi tiết.
+
+Validate khi SỬA:
+  - (1), (2), (3-4) bỏ qua để cho phép sửa/chỉnh lịch đã qua.
+  - (5), (6) vẫn áp dụng, loại trừ chính exam_id này.
+
+Gán sinh viên:
+  - UI hiển thị list toàn bộ user (role != admin) trong modal với:
+       ô tìm kiếm theo họ tên / MSSV / username,
+       filter "Chỉ SV đã đăng ký mặt",
+       nút Chọn tất cả / Bỏ chọn,
+       hiển thị avatar chữ cái + badge "Đã ĐK" / "Chưa ĐK".
+  - Server tự lọc bỏ id không tồn tại hoặc là admin.
+  - Khi update: so sánh set cũ và mới → chỉ INSERT/DELETE chênh lệch, giữ
+    nguyên attended_at của các SV không bị đổi.
+
+Xoá lịch thi:
+  - Nếu lịch đã có ≥ 1 SV điểm danh: UI bắt gõ "XOA" để xác nhận (tránh mất
+    dữ liệu điểm danh ngoài ý muốn).
+  - Nếu chưa có → chỉ cần confirm bình thường.
+  - Server xoá exams, cascade xoá exam_students.
+
+3.D. ĐIỂM DANH BẰNG CAMERA
+--------------------------------------------------------------------------------
+Endpoints:
+- POST   /api/admin/exams/{id}/attendance/{user_id}   đánh dấu có mặt
+- DELETE /api/admin/exams/{id}/attendance/{user_id}   huỷ điểm danh (đánh nhầm)
+
+Cả hai endpoint đều kiểm tra "cửa sổ điểm danh":
+    [start_time - 15 phút, end_time + 15 phút]  của exam_date
+Ngoài cửa sổ này trả 400 với gợi ý giờ mở.
+
+Flow trong UI admin:
+  a) Admin vào tab Điểm danh, chọn lịch thi từ dropdown.
+  b) GET /api/admin/exams/{id} → hiển thị:
+       - Tiêu đề: môn, ngày, giờ, phòng
+       - Bảng SV: MSSV, Họ tên, Trạng thái, Thời gian, Thao tác
+       - Badge "chưa ĐK mặt" nếu face_registered=false.
+  c) Bấm "Bật camera & điểm danh":
+       - getUserMedia camera.
+       - Mỗi frame throttle → POST /api/face/verify (cùng API với xác minh).
+       - Với mỗi match top-1 (score ≥ ngưỡng):
+           * Nếu user_id thuộc danh sách lịch thi (attendanceById có)
+             và chưa attended_at → POST mark attendance.
+           * Nếu đã attended_at → vẫn vẽ tên + "Đã điểm danh" (không POST lại).
+           * Nếu không thuộc lịch thi → vẽ "Không có trong lịch" (vàng).
+       - Server mark_attendance:
+           * Chỉ set attended_at = NOW() nếu lần đầu (first_time=True).
+           * Các lần sau giữ mốc cũ — tránh ghi đè khi SV đi lại ra vào.
+       - Canvas vẽ bbox, tên, MSSV, score, FPS, device giống verify.
+  d) Bảng SV auto poll GET /api/admin/exams/{id} mỗi 5 giây để đồng bộ trạng
+     thái (nhiều admin điểm danh song song). Dừng poll khi rời tab.
+  e) Thao tác thủ công trên từng dòng:
+       - SV chưa có → nút "✓ Có mặt" → POST mark.
+       - SV đã có   → nút "↺ Huỷ"   → confirm → DELETE attendance.
+     Cả hai đều tôn trọng cửa sổ thời gian ở backend.
+  f) Trạng thái hiển thị:
+       - attended_at ≤ start_time : "✓ Đúng giờ" (xanh).
+       - attended_at > start_time : "✓ Muộn N phút" (vàng).
+       - chưa có                  : "Chưa" (đỏ).
+
+================================================================================
+4. LUỒNG DỮ LIỆU KHI XÁC MINH / ĐIỂM DANH (1 FRAME)
+================================================================================
+[Client]
+   captureFrame → JPEG blob → POST /api/face/verify
+   (hoặc /api/face/{sid}/frame khi đang đăng ký)
+[Server]
+   decode → InsightFace.get(img)        # detect + landmarks + embedding
+      ↓
+   với mỗi face:
+      - crop
+      - occlusion.detect(img, face)     # khẩu trang, kính đen
+      - FAS model (nếu bật)             # ảnh 2D? màn hình?
+      - nếu sạch → Qdrant.search(top=1)
+                → so sánh score ≥ threshold
+      - build result {bbox, label, score, state}
+   trả JSON { faces: [...], device, fps }
+[Client]
+   - Vẽ overlay lên canvas.
+   - (attendance mode) với face match user_id trong lịch → gọi mark API.
+
+================================================================================
+5. CÁC RÀNG BUỘC QUAN TRỌNG (CHECK LIST)
+================================================================================
+[ACCOUNT]
+- Username / email / MSSV duy nhất.
+- Admin không thể CRUD admin khác qua UI.
+- Xoá user → xoá embedding + exam_students cascade.
+
+[FACE]
+- 1 user chỉ đăng ký mặt 1 lần (trừ khi admin reset).
+- Đăng ký bắt buộc đủ 5 góc, FRONT phải không che + không giả.
+- Qdrant lưu 25 embedding THÔ / user (5 hướng × 5 frame); collection dùng
+  Distance.COSINE nên Qdrant tự chuẩn hoá vector khi search → không L2-norm
+  thủ công ở phía client.
+- Match lúc verify: query top-5 Qdrant (cosine), lọc score ≥ 0.6, majority
+  vote theo user_id — cần ≥ 2 hit cùng user_id mới công nhận.
+
+[EXAM CREATE]
+- Ngày > quá khứ; nếu hôm nay thì giờ bắt đầu ≥ now+30ph.
+- end_time > start_time.
+- Phòng bắt buộc.
+- Không đè phòng trùng giờ.
+- Không đè sinh viên trùng giờ.
+
+[EXAM UPDATE]
+- Vẫn check phòng + sinh viên conflict (exclude chính nó).
+- Cho phép sửa lịch đã qua (không check future).
+
+[ATTENDANCE]
+- Chỉ trong cửa sổ [start-15p, end+15p].
+- Chỉ set attended_at lần đầu (không ghi đè).
+- Admin có thể huỷ bằng DELETE (trong cửa sổ).
+
+================================================================================
+6. MA TRẬN QUYỀN
+================================================================================
+Endpoint                                               Public  User  Admin
+---------------------------------------------------------------------------
+POST /api/register                                      ✓       ✓     ✓
+POST /api/login                                         ✓       ✓     ✓
+GET  /api/me                                            ✗       ✓     ✓
+GET  /api/me/exams                                      ✗       ✓     ✓
+POST /api/face/start/{uid}     (uid phải là của mình    ✗       ✓     ✓
+POST /api/face/{sid}/frame       hoặc admin)            ✗       ✓     ✓
+POST /api/face/{sid}/finish                             ✗       ✓     ✓
+POST /api/face/verify                                   ✗       ✗     ✓
+GET/POST/PUT/DELETE /api/admin/users...                 ✗       ✗     ✓
+POST /api/admin/users/{id}/face-reset                   ✗       ✗     ✓
+GET/POST/PUT/DELETE /api/admin/exams...                 ✗       ✗     ✓
+POST   /api/admin/exams/{id}/attendance/{uid}           ✗       ✗     ✓
+DELETE /api/admin/exams/{id}/attendance/{uid}           ✗       ✗     ✓
+
+================================================================================
+7. SƠ ĐỒ TRẠNG THÁI
+================================================================================
+
+[Tài khoản]
+    CREATED ─(đăng ký mặt xong)─▶ FACE_READY ─(admin reset)─▶ CREATED
+
+[Lịch thi]  (theo thời gian)
+    UPCOMING ─(now ≥ start)─▶ ONGOING ─(now > end)─▶ FINISHED
+
+[Sinh viên trong lịch thi]
+    ENROLLED ─(mark trong cửa sổ)─▶ ATTENDED
+    ATTENDED ─(admin DELETE)──────▶ ENROLLED   (trong cửa sổ)
+    ENROLLED ─(exam FINISHED, chưa mark)───▶ ABSENT (hiển thị UI)
+
+================================================================================
+HẾT.
+================================================================================

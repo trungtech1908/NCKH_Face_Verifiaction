@@ -44,7 +44,7 @@ from core.registration_FAS import FaceRegistrationSession
 from core.embedding import FaceEmbedder, build_user_embedding, cosine_similarity
 from core.occlusion import detect_occlusion, describe_reasons
 from storage.qdrant_store import QdrantFaceStore
-from storage.mysql_store import MySQLUserStore, init_database
+from storage.mysql_store import MySQLUserStore, ExamStore, init_database
 from api.auth import (hash_password, verify_password,
                       create_access_token, decode_token)
 import config
@@ -61,6 +61,7 @@ templates = Jinja2Templates(directory="templates")
 # ── Singletons ─────────────────────────────────────────────────────────────
 _qdrant: Optional[QdrantFaceStore] = None
 _mysql: Optional[MySQLUserStore] = None
+_exams: Optional[ExamStore] = None
 _embedder: Optional[FaceEmbedder] = None
 _embedder_lock = threading.Lock()
 # Xác minh khuôn mặt: chỉ CPU (không dùng GPU cho InsightFace)
@@ -95,6 +96,12 @@ def get_mysql() -> MySQLUserStore:
     if _mysql is None:
         _mysql = MySQLUserStore()
     return _mysql
+
+def get_exams() -> ExamStore:
+    global _exams
+    if _exams is None:
+        _exams = ExamStore()
+    return _exams
 
 def get_embedder() -> FaceEmbedder:
     global _embedder
@@ -420,6 +427,303 @@ async def admin_delete_user(user_id: int, admin: dict = Depends(_require_admin))
     # Xoá user trong MySQL
     mysql.delete_user(user_id)
     return {"message": f"Đã xoá user '{user['username']}'"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# API: ADMIN — Lịch thi (Exams) + Điểm danh
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ExamCreate(BaseModel):
+    subject: str
+    exam_date: str           # "YYYY-MM-DD"
+    start_time: str          # "HH:MM"
+    end_time: str            # "HH:MM"
+    room: str = ""
+    note: str = ""
+    student_ids: List[int] = []
+
+class ExamUpdate(BaseModel):
+    subject: Optional[str] = None
+    exam_date: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    room: Optional[str] = None
+    note: Optional[str] = None
+    student_ids: Optional[List[int]] = None
+
+
+# Giờ bắt đầu phải sớm hơn hiện tại ít nhất 30 phút (tức: start >= now + 30min)
+EXAM_MIN_LEAD_MINUTES = 30
+
+# Cửa sổ cho phép điểm danh: [start - X phút, end + X phút] của ngày thi
+ATTENDANCE_WINDOW_MINUTES = 15
+
+
+def _check_attendance_window(exam: Dict):
+    """Chặn mark/unmark attendance nếu hiện tại nằm ngoài cửa sổ cho phép.
+    Raise HTTPException(400) nếu sai thời gian."""
+    import datetime as _dt
+    try:
+        d = _dt.date.fromisoformat(exam["exam_date"])
+        st_str = exam["start_time"]
+        en_str = exam["end_time"]
+        st = _dt.time.fromisoformat(st_str if len(st_str) == 8 else st_str + ":00")
+        en = _dt.time.fromisoformat(en_str if len(en_str) == 8 else en_str + ":00")
+    except Exception:
+        return
+    now = _dt.datetime.now()
+    window_start = _dt.datetime.combine(d, st) - _dt.timedelta(minutes=ATTENDANCE_WINDOW_MINUTES)
+    window_end   = _dt.datetime.combine(d, en) + _dt.timedelta(minutes=ATTENDANCE_WINDOW_MINUTES)
+    if now < window_start:
+        raise HTTPException(
+            400,
+            f"Chưa tới giờ điểm danh. Chỉ được điểm danh từ "
+            f"{window_start.strftime('%H:%M %d/%m/%Y')}",
+        )
+    if now > window_end:
+        raise HTTPException(
+            400,
+            f"Đã quá giờ điểm danh (đóng lúc {window_end.strftime('%H:%M %d/%m/%Y')})",
+        )
+
+
+def _validate_exam_payload(subject: str, exam_date: str, start_time: str, end_time: str,
+                           room: Optional[str] = None,
+                           *, check_future: bool = False,
+                           require_room: bool = False,
+                           check_room_conflict: bool = False,
+                           exclude_exam_id: Optional[int] = None):
+    import datetime as _dt
+    if not (subject or "").strip():
+        raise HTTPException(400, "Thiếu môn thi")
+    if require_room and not (room or "").strip():
+        raise HTTPException(400, "Phòng thi là bắt buộc")
+    try:
+        d = _dt.date.fromisoformat(exam_date)
+    except Exception:
+        raise HTTPException(400, "Ngày thi không hợp lệ (YYYY-MM-DD)")
+    try:
+        st = _dt.time.fromisoformat(start_time if len(start_time) == 8 else start_time + ":00")
+        en = _dt.time.fromisoformat(end_time   if len(end_time)   == 8 else end_time   + ":00")
+    except Exception:
+        raise HTTPException(400, "Giờ không hợp lệ (HH:MM)")
+    if en <= st:
+        raise HTTPException(400, "Giờ kết thúc phải sau giờ bắt đầu")
+    if check_future:
+        now = _dt.datetime.now()
+        today = now.date()
+        if d < today:
+            raise HTTPException(400, "Ngày thi không được ở trong quá khứ")
+        if d == today:
+            start_dt = _dt.datetime.combine(d, st)
+            min_start = now + _dt.timedelta(minutes=EXAM_MIN_LEAD_MINUTES)
+            if start_dt < min_start:
+                raise HTTPException(
+                    400,
+                    f"Với lịch thi trong hôm nay, giờ bắt đầu phải sớm hơn hiện tại "
+                    f"ít nhất {EXAM_MIN_LEAD_MINUTES} phút "
+                    f"(sớm nhất: {min_start.strftime('%H:%M')})",
+                )
+    if check_room_conflict and (room or "").strip():
+        conflict = get_exams().find_room_conflict(
+            room=room.strip(),
+            exam_date=exam_date,
+            start_time=start_time if len(start_time) == 8 else start_time + ":00",
+            end_time=end_time if len(end_time) == 8 else end_time + ":00",
+            exclude_id=exclude_exam_id,
+        )
+        if conflict:
+            raise HTTPException(
+                400,
+                f"Phòng {room.strip()} đã có lịch '{conflict['subject']}' "
+                f"từ {conflict['start_time'][:5]} đến {conflict['end_time'][:5]} "
+                f"trong ngày này",
+            )
+
+
+def _raise_if_student_conflict(*, student_ids: List[int], exam_date: str,
+                               start_time: str, end_time: str,
+                               exclude_exam_id: Optional[int] = None):
+    """Chặn gán 1 sinh viên vào 2 lịch thi trùng giờ (cùng ngày, chồng chéo)."""
+    if not student_ids:
+        return
+    st = start_time if len(start_time) == 8 else start_time + ":00"
+    en = end_time   if len(end_time)   == 8 else end_time   + ":00"
+    conflicts = get_exams().find_student_conflicts(
+        student_ids=student_ids,
+        exam_date=exam_date,
+        start_time=st, end_time=en,
+        exclude_exam_id=exclude_exam_id,
+    )
+    if not conflicts:
+        return
+    # Gom theo sinh viên để thông báo gọn
+    by_user: Dict[int, List[Dict]] = {}
+    names: Dict[int, str] = {}
+    for c in conflicts:
+        by_user.setdefault(c["user_id"], []).append(c)
+        names[c["user_id"]] = f"{c['student_id'] or c['username']} - {c['full_name'] or c['username']}"
+    msgs = []
+    for uid, items in by_user.items():
+        clash = items[0]
+        msgs.append(
+            f"{names[uid]}: đã có '{clash['subject']}' "
+            f"{clash['start_time'][:5]}–{clash['end_time'][:5]}"
+        )
+    raise HTTPException(400, "Xung đột lịch thi cho sinh viên: " + "; ".join(msgs))
+
+
+def _filter_non_admin_ids(mysql: MySQLUserStore, ids: List[int]) -> List[int]:
+    """Lọc bỏ id không tồn tại hoặc là admin."""
+    out = []
+    for uid in set(int(x) for x in ids):
+        u = mysql.get_user_by_id(uid)
+        if u and (u.get("role") or "").lower() != "admin":
+            out.append(uid)
+    return out
+
+
+@app.get("/api/admin/exams")
+async def admin_list_exams(admin: dict = Depends(_require_admin)):
+    return {"exams": get_exams().list_exams()}
+
+
+@app.get("/api/admin/exams/{exam_id}")
+async def admin_get_exam(exam_id: int, admin: dict = Depends(_require_admin)):
+    exam = get_exams().get_exam(exam_id)
+    if not exam:
+        raise HTTPException(404, "Lịch thi không tồn tại")
+    return exam
+
+
+@app.post("/api/admin/exams")
+async def admin_create_exam(body: ExamCreate, admin: dict = Depends(_require_admin)):
+    _validate_exam_payload(
+        body.subject, body.exam_date, body.start_time, body.end_time,
+        body.room,
+        check_future=True,
+        require_room=True,
+        check_room_conflict=True,
+    )
+    mysql = get_mysql()
+    student_ids = _filter_non_admin_ids(mysql, body.student_ids or [])
+    _raise_if_student_conflict(
+        student_ids=student_ids,
+        exam_date=body.exam_date,
+        start_time=body.start_time,
+        end_time=body.end_time,
+    )
+    exam_id = get_exams().create_exam(
+        subject=body.subject.strip(),
+        exam_date=body.exam_date,
+        start_time=body.start_time,
+        end_time=body.end_time,
+        room=(body.room or "").strip(),
+        note=(body.note or "").strip(),
+        student_ids=student_ids,
+    )
+    if exam_id is None:
+        raise HTTPException(500, "Không tạo được lịch thi")
+    return {"message": "Tạo lịch thi thành công", "exam_id": exam_id}
+
+
+@app.put("/api/admin/exams/{exam_id}")
+async def admin_update_exam(exam_id: int, body: ExamUpdate,
+                            admin: dict = Depends(_require_admin)):
+    exams = get_exams()
+    existing = exams.get_exam(exam_id)
+    if not existing:
+        raise HTTPException(404, "Lịch thi không tồn tại")
+
+    # Gộp lại thông tin lịch sau update để validate đầy đủ (bao gồm cả room)
+    merged_subject   = body.subject    if body.subject    is not None else existing["subject"]
+    merged_date      = body.exam_date  if body.exam_date  is not None else existing["exam_date"]
+    merged_start     = body.start_time if body.start_time is not None else existing["start_time"]
+    merged_end       = body.end_time   if body.end_time   is not None else existing["end_time"]
+    merged_room      = body.room       if body.room       is not None else existing.get("room", "")
+
+    if any(v is not None for v in (body.subject, body.exam_date, body.start_time,
+                                   body.end_time, body.room)):
+        _validate_exam_payload(
+            merged_subject, merged_date, merged_start, merged_end, merged_room,
+            require_room=True,
+            check_room_conflict=True,
+            exclude_exam_id=exam_id,
+        )
+    student_ids = None
+    if body.student_ids is not None:
+        student_ids = _filter_non_admin_ids(get_mysql(), body.student_ids)
+        _raise_if_student_conflict(
+            student_ids=student_ids,
+            exam_date=merged_date,
+            start_time=merged_start,
+            end_time=merged_end,
+            exclude_exam_id=exam_id,
+        )
+
+    exams.update_exam(
+        exam_id,
+        subject=body.subject.strip() if body.subject is not None else None,
+        exam_date=body.exam_date,
+        start_time=body.start_time,
+        end_time=body.end_time,
+        room=body.room.strip() if body.room is not None else None,
+        note=body.note.strip() if body.note is not None else None,
+        student_ids=student_ids,
+    )
+    return {"message": "Cập nhật lịch thi thành công"}
+
+
+@app.delete("/api/admin/exams/{exam_id}")
+async def admin_delete_exam(exam_id: int, admin: dict = Depends(_require_admin)):
+    ok = get_exams().delete_exam(exam_id)
+    if not ok:
+        raise HTTPException(404, "Lịch thi không tồn tại")
+    return {"message": "Đã xoá lịch thi"}
+
+
+@app.post("/api/admin/exams/{exam_id}/attendance/{user_id}")
+async def admin_mark_attendance(exam_id: int, user_id: int,
+                                admin: dict = Depends(_require_admin)):
+    """
+    Đánh dấu 1 sinh viên có mặt trong lịch thi.
+    Chỉ set attended_at lần đầu — các lần gọi lại giữ nguyên mốc cũ.
+    Chỉ được thực hiện trong cửa sổ [start - 15m, end + 15m].
+    """
+    exam = get_exams().get_exam(exam_id)
+    if not exam:
+        raise HTTPException(404, "Lịch thi không tồn tại")
+    _check_attendance_window(exam)
+    result = get_exams().mark_attendance(exam_id, user_id)
+    if result is None:
+        raise HTTPException(404, "Sinh viên không có trong lịch thi này")
+    return {
+        "user_id": user_id,
+        "attended_at": result["attended_at"],
+        "first_time": result["first_time"],
+    }
+
+
+@app.delete("/api/admin/exams/{exam_id}/attendance/{user_id}")
+async def admin_unmark_attendance(exam_id: int, user_id: int,
+                                  admin: dict = Depends(_require_admin)):
+    """Huỷ điểm danh 1 sinh viên (dành cho trường hợp nhận nhầm)."""
+    exam = get_exams().get_exam(exam_id)
+    if not exam:
+        raise HTTPException(404, "Lịch thi không tồn tại")
+    _check_attendance_window(exam)
+    ok = get_exams().unmark_attendance(exam_id, user_id)
+    if not ok:
+        # Không có thay đổi — hoặc không thuộc lịch, hoặc chưa từng được đánh dấu
+        raise HTTPException(404, "Không có bản ghi điểm danh để huỷ")
+    return {"message": "Đã huỷ điểm danh", "user_id": user_id}
+
+
+@app.get("/api/me/exams")
+async def me_exams(current: dict = Depends(_get_current_user)):
+    """Trả về danh sách lịch thi của sinh viên đang đăng nhập."""
+    uid = int(current["sub"])
+    return {"exams": get_exams().list_exams_for_user(uid)}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

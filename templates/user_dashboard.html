@@ -72,6 +72,35 @@ body{background:var(--bg);font-family:var(--font);min-height:100vh}
   border:2px solid rgba(59,130,246,.3);border-top-color:var(--primary);
   border-radius:50%;animation:spin .5s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Exam list */
+.exams-card{background:var(--white);border-radius:16px;box-shadow:var(--shadow);padding:1.5rem;margin-top:1.5rem}
+.exams-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem}
+.exams-title{font-size:1.05rem;font-weight:700;color:var(--gray-900)}
+.exams-tabs{display:flex;gap:.4rem}
+.exam-tab{font-family:var(--font);font-size:.78rem;font-weight:600;color:var(--gray-600);
+  background:var(--gray-100);border:none;padding:.4rem .8rem;border-radius:8px;cursor:pointer;transition:all .15s}
+.exam-tab.active{background:var(--primary);color:#fff}
+.exam-item{display:grid;grid-template-columns:64px 1fr auto;gap:1rem;align-items:center;
+  padding:.85rem;border:1px solid var(--gray-200);border-radius:12px;margin-bottom:.6rem;transition:all .15s}
+.exam-item:hover{border-color:var(--primary-light)}
+.exam-item.upcoming{border-left:4px solid var(--primary)}
+.exam-item.ongoing{border-left:4px solid var(--warning);background:#FFFBEB}
+.exam-item.finished{border-left:4px solid var(--gray-400);opacity:.82}
+.exam-date{text-align:center;background:var(--gray-100);border-radius:10px;padding:.45rem .3rem}
+.exam-date .d{font-size:1.15rem;font-weight:700;color:var(--gray-900);line-height:1.1}
+.exam-date .m{font-size:.65rem;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.06em;margin-top:.1rem}
+.exam-body{min-width:0}
+.exam-subject{font-size:.95rem;font-weight:700;color:var(--gray-900);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.exam-meta{font-size:.78rem;color:var(--gray-500);margin-top:.2rem;display:flex;gap:.8rem;flex-wrap:wrap}
+.exam-meta strong{color:var(--gray-700);font-weight:600}
+.exam-status{display:inline-flex;align-items:center;gap:.25rem;padding:.3rem .6rem;border-radius:999px;
+  font-size:.72rem;font-weight:700;white-space:nowrap}
+.exam-status.att{background:var(--success-light);color:#047857}
+.exam-status.att.late{background:var(--warning-light);color:#92400E}
+.exam-status.miss{background:#FEE2E2;color:#B91C1C}
+.exam-status.pending{background:var(--gray-100);color:var(--gray-600)}
+.exam-empty{text-align:center;color:var(--gray-400);font-size:.85rem;padding:1.5rem}
 </style>
 </head>
 <body>
@@ -109,6 +138,18 @@ body{background:var(--bg);font-family:var(--font);min-height:100vh}
       <div class="face-desc" id="face-desc"></div>
     </div>
     <a class="btn btn-primary" id="face-btn" href="#" style="display:none">Đăng ký ngay</a>
+  </div>
+
+  <div class="exams-card">
+    <div class="exams-head">
+      <div class="exams-title">Lịch thi của bạn</div>
+      <div class="exams-tabs">
+        <button class="exam-tab active" data-filter="upcoming" onclick="setExamFilter('upcoming')">Sắp tới</button>
+        <button class="exam-tab" data-filter="past" onclick="setExamFilter('past')">Đã qua</button>
+        <button class="exam-tab" data-filter="all" onclick="setExamFilter('all')">Tất cả</button>
+      </div>
+    </div>
+    <div id="exams-list"><div class="exam-empty"><span class="spinner"></span></div></div>
   </div>
 </div>
 
@@ -167,6 +208,102 @@ async function loadProfile(){
 }
 
 loadProfile()
+
+// ── Lịch thi cá nhân ──
+const MONTH_SHORT=['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12']
+let myExams=[]
+let examFilter='upcoming'
+
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+function examStateOf(e){
+  try{
+    const start=new Date(e.exam_date+'T'+(e.start_time||'00:00:00'))
+    const end  =new Date(e.exam_date+'T'+(e.end_time  ||'00:00:00'))
+    const now=new Date()
+    if(now<start) return 'upcoming'
+    if(now>=start && now<=end) return 'ongoing'
+    return 'finished'
+  }catch(_){ return 'upcoming' }
+}
+
+function lateMinutes(e){
+  if(!e.attended_at) return null
+  try{
+    const at=new Date(e.attended_at.replace(' ','T'))
+    const start=new Date(e.exam_date+'T'+(e.start_time||'00:00:00'))
+    return Math.round((at-start)/60000)
+  }catch(_){ return null }
+}
+
+async function loadMyExams(){
+  try{
+    const res=await fetch('/api/me/exams',{headers:{'Authorization':'Bearer '+token}})
+    if(!res.ok){ document.getElementById('exams-list').innerHTML='<div class="exam-empty">Không tải được lịch thi</div>'; return }
+    const data=await res.json()
+    myExams=data.exams||[]
+    renderExams()
+  }catch(_){
+    document.getElementById('exams-list').innerHTML='<div class="exam-empty">Lỗi kết nối</div>'
+  }
+}
+
+function setExamFilter(f){
+  examFilter=f
+  document.querySelectorAll('.exam-tab').forEach(b=>b.classList.toggle('active', b.dataset.filter===f))
+  renderExams()
+}
+
+function renderExams(){
+  const box=document.getElementById('exams-list')
+  let list=myExams
+  if(examFilter==='upcoming'){
+    list=list.filter(e=>['upcoming','ongoing'].includes(examStateOf(e)))
+    list=list.slice().sort((a,b)=>(a.exam_date+a.start_time).localeCompare(b.exam_date+b.start_time))
+  }else if(examFilter==='past'){
+    list=list.filter(e=>examStateOf(e)==='finished')
+  }
+  if(!list.length){
+    box.innerHTML='<div class="exam-empty">Không có lịch thi nào</div>'; return
+  }
+  box.innerHTML=list.map(e=>{
+    const [yy,mm,dd]=(e.exam_date||'----').split('-')
+    const state=examStateOf(e)
+    let statusHtml
+    if(e.attended_at){
+      const late=lateMinutes(e)
+      if(late!==null && late>0)
+        statusHtml=`<span class="exam-status att late" title="${escapeHtml(e.attended_at)}">⏱ Muộn ${late} phút</span>`
+      else
+        statusHtml=`<span class="exam-status att" title="${escapeHtml(e.attended_at)}">✓ Đã điểm danh</span>`
+    }else if(state==='finished'){
+      statusHtml='<span class="exam-status miss">✗ Vắng</span>'
+    }else if(state==='ongoing'){
+      statusHtml='<span class="exam-status pending">🟡 Đang diễn ra</span>'
+    }else{
+      statusHtml='<span class="exam-status pending">🕓 Sắp tới</span>'
+    }
+    const room=e.room?`<span><strong>Phòng:</strong> ${escapeHtml(e.room)}</span>`:''
+    const note=e.note?`<span>${escapeHtml(e.note)}</span>`:''
+    return `<div class="exam-item ${state}">
+      <div class="exam-date">
+        <div class="d">${escapeHtml(dd||'--')}</div>
+        <div class="m">${escapeHtml(MONTH_SHORT[parseInt(mm,10)-1]||'')}</div>
+      </div>
+      <div class="exam-body">
+        <div class="exam-subject">${escapeHtml(e.subject||'—')}</div>
+        <div class="exam-meta">
+          <span><strong>Giờ:</strong> ${escapeHtml((e.start_time||'').slice(0,5))}–${escapeHtml((e.end_time||'').slice(0,5))}</span>
+          ${room}
+          ${note}
+        </div>
+      </div>
+      <div>${statusHtml}</div>
+    </div>`
+  }).join('')
+}
+
+loadMyExams()
 </script>
 </body>
 </html>

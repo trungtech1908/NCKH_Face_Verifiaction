@@ -53,6 +53,36 @@ def init_database():
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
+
+    # Lịch thi (exam schedule)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS exams (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            subject VARCHAR(150) NOT NULL,
+            exam_date DATE NOT NULL,
+            start_time TIME NOT NULL,
+            end_time TIME NOT NULL,
+            room VARCHAR(50) DEFAULT '',
+            note VARCHAR(255) DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_exam_date (exam_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    # Sinh viên trong mỗi lịch thi + mốc điểm danh
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS exam_students (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            exam_id INT NOT NULL,
+            user_id INT NOT NULL,
+            attended_at DATETIME NULL,
+            UNIQUE KEY uniq_exam_user (exam_id, user_id),
+            INDEX idx_exam (exam_id),
+            INDEX idx_user (user_id),
+            CONSTRAINT fk_es_exam FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+            CONSTRAINT fk_es_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
     conn.commit()
 
     # Seed admin mặc định
@@ -200,3 +230,383 @@ class MySQLUserStore:
         except Error as e:
             logger.error("delete_user error: %s", e)
             return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXAM STORE — lịch thi + điểm danh
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _fmt_date(v) -> Optional[str]:
+    if v is None:
+        return None
+    try:
+        return v.strftime("%Y-%m-%d")
+    except Exception:
+        return str(v)
+
+
+def _fmt_time(v) -> Optional[str]:
+    if v is None:
+        return None
+    try:
+        if hasattr(v, "total_seconds"):
+            s = int(v.total_seconds())
+            return f"{s // 3600:02d}:{(s % 3600) // 60:02d}"
+        return v.strftime("%H:%M")
+    except Exception:
+        return str(v)
+
+
+def _fmt_dt(v) -> Optional[str]:
+    if v is None:
+        return None
+    try:
+        return v.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(v)
+
+
+class ExamStore:
+    """CRUD cho lịch thi (exams) và điểm danh (exam_students)."""
+
+    def create_exam(self, *, subject: str, exam_date: str, start_time: str,
+                    end_time: str, room: str = "", note: str = "",
+                    student_ids: Optional[List[int]] = None) -> Optional[int]:
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO exams (subject, exam_date, start_time, end_time, room, note) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (subject, exam_date, start_time, end_time, room, note),
+            )
+            exam_id = cursor.lastrowid
+            if student_ids:
+                ids = list({int(x) for x in student_ids})
+                cursor.executemany(
+                    "INSERT IGNORE INTO exam_students (exam_id, user_id) VALUES (%s, %s)",
+                    [(exam_id, uid) for uid in ids],
+                )
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return exam_id
+        except Error as e:
+            logger.error("create_exam error: %s", e)
+            return None
+
+    def list_exams(self) -> List[Dict]:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT e.id, e.subject, e.exam_date, e.start_time, e.end_time,
+                   e.room, e.note, e.created_at,
+                   COUNT(es.id) AS total_students,
+                   SUM(CASE WHEN es.attended_at IS NOT NULL THEN 1 ELSE 0 END) AS total_attended
+            FROM exams e
+            LEFT JOIN exam_students es ON es.exam_id = e.id
+            GROUP BY e.id
+            ORDER BY e.exam_date DESC, e.start_time DESC
+        """)
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        out = []
+        for r in rows:
+            out.append({
+                "id": r[0],
+                "subject": r[1],
+                "exam_date": _fmt_date(r[2]),
+                "start_time": _fmt_time(r[3]),
+                "end_time": _fmt_time(r[4]),
+                "room": r[5] or "",
+                "note": r[6] or "",
+                "created_at": _fmt_dt(r[7]),
+                "total_students": int(r[8] or 0),
+                "total_attended": int(r[9] or 0),
+            })
+        return out
+
+    def get_exam(self, exam_id: int) -> Optional[Dict]:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, subject, exam_date, start_time, end_time, room, note, created_at "
+            "FROM exams WHERE id = %s",
+            (exam_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            cursor.close()
+            conn.close()
+            return None
+        exam = {
+            "id": row[0],
+            "subject": row[1],
+            "exam_date": _fmt_date(row[2]),
+            "start_time": _fmt_time(row[3]),
+            "end_time": _fmt_time(row[4]),
+            "room": row[5] or "",
+            "note": row[6] or "",
+            "created_at": _fmt_dt(row[7]),
+        }
+        cursor.execute("""
+            SELECT u.id, u.username, u.full_name, u.student_id, u.face_registered,
+                   es.attended_at
+            FROM exam_students es
+            JOIN users u ON u.id = es.user_id
+            WHERE es.exam_id = %s
+            ORDER BY u.student_id, u.full_name, u.username
+        """, (exam_id,))
+        students = []
+        for r in cursor.fetchall():
+            students.append({
+                "id": r[0],
+                "username": r[1],
+                "full_name": r[2] or "",
+                "student_id": r[3] or "",
+                "face_registered": bool(r[4]),
+                "attended_at": _fmt_dt(r[5]),
+            })
+        exam["students"] = students
+        exam["total_students"] = len(students)
+        exam["total_attended"] = sum(1 for s in students if s["attended_at"])
+        cursor.close()
+        conn.close()
+        return exam
+
+    def update_exam(self, exam_id: int, *, subject: Optional[str] = None,
+                    exam_date: Optional[str] = None, start_time: Optional[str] = None,
+                    end_time: Optional[str] = None, room: Optional[str] = None,
+                    note: Optional[str] = None,
+                    student_ids: Optional[List[int]] = None) -> bool:
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor()
+            fields = {
+                "subject": subject, "exam_date": exam_date,
+                "start_time": start_time, "end_time": end_time,
+                "room": room, "note": note,
+            }
+            updates = {k: v for k, v in fields.items() if v is not None}
+            if updates:
+                set_clause = ", ".join(f"{k} = %s" for k in updates)
+                cursor.execute(
+                    f"UPDATE exams SET {set_clause} WHERE id = %s",
+                    list(updates.values()) + [exam_id],
+                )
+            if student_ids is not None:
+                new_ids = {int(x) for x in student_ids}
+                cursor.execute("SELECT user_id FROM exam_students WHERE exam_id = %s", (exam_id,))
+                old_ids = {r[0] for r in cursor.fetchall()}
+                to_add = new_ids - old_ids
+                to_del = old_ids - new_ids
+                if to_add:
+                    cursor.executemany(
+                        "INSERT IGNORE INTO exam_students (exam_id, user_id) VALUES (%s, %s)",
+                        [(exam_id, uid) for uid in to_add],
+                    )
+                if to_del:
+                    cursor.execute(
+                        "DELETE FROM exam_students WHERE exam_id = %s AND user_id IN (%s)"
+                        % (exam_id, ",".join(str(x) for x in to_del))
+                    )
+            conn.commit()
+            cursor.close()
+            conn.close()
+            return True
+        except Error as e:
+            logger.error("update_exam error: %s", e)
+            return False
+
+    def find_room_conflict(self, *, room: str, exam_date: str,
+                           start_time: str, end_time: str,
+                           exclude_id: Optional[int] = None) -> Optional[Dict]:
+        """
+        Tìm lịch thi khác đã chiếm phòng `room` ngày `exam_date`
+        có giờ giao với [start_time, end_time). Trả về dict {id, subject,
+        start_time, end_time} nếu có xung đột, ngược lại None.
+        """
+        room = (room or "").strip()
+        if not room:
+            return None
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor(dictionary=True)
+            sql = (
+                "SELECT id, subject, start_time, end_time FROM exams "
+                "WHERE room = %s AND exam_date = %s "
+                "AND start_time < %s AND end_time > %s"
+            )
+            params = [room, exam_date, end_time, start_time]
+            if exclude_id is not None:
+                sql += " AND id <> %s"
+                params.append(exclude_id)
+            sql += " LIMIT 1"
+            cursor.execute(sql, tuple(params))
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if not row:
+                return None
+            return {
+                "id": row["id"],
+                "subject": row["subject"],
+                "start_time": _fmt_time(row["start_time"]),
+                "end_time": _fmt_time(row["end_time"]),
+            }
+        except Error as e:
+            logger.error("find_room_conflict error: %s", e)
+            return None
+
+    def delete_exam(self, exam_id: int) -> bool:
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM exams WHERE id = %s", (exam_id,))
+            conn.commit()
+            affected = cursor.rowcount
+            cursor.close()
+            conn.close()
+            return affected > 0
+        except Error as e:
+            logger.error("delete_exam error: %s", e)
+            return False
+
+    def find_student_conflicts(self, *, student_ids: List[int], exam_date: str,
+                               start_time: str, end_time: str,
+                               exclude_exam_id: Optional[int] = None) -> List[Dict]:
+        """
+        Với danh sách student_ids sẽ được gán vào 1 lịch thi ngày `exam_date`
+        giờ [start_time, end_time), tìm các sinh viên đã có mặt trong lịch thi
+        khác có giờ chồng chéo.
+        Trả về list {user_id, full_name, student_id, exam_id, subject, start_time, end_time}
+        """
+        if not student_ids:
+            return []
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor(dictionary=True)
+            placeholders = ",".join(["%s"] * len(student_ids))
+            sql = (
+                f"SELECT es.user_id, u.full_name, u.student_id, u.username, "
+                f"       e.id AS exam_id, e.subject, e.start_time, e.end_time "
+                f"FROM exam_students es "
+                f"JOIN exams e ON e.id = es.exam_id "
+                f"JOIN users u ON u.id = es.user_id "
+                f"WHERE es.user_id IN ({placeholders}) "
+                f"  AND e.exam_date = %s "
+                f"  AND e.start_time < %s AND e.end_time > %s"
+            )
+            params: list = list(student_ids) + [exam_date, end_time, start_time]
+            if exclude_exam_id is not None:
+                sql += " AND e.id <> %s"
+                params.append(exclude_exam_id)
+            cursor.execute(sql, tuple(params))
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            out = []
+            for r in rows:
+                out.append({
+                    "user_id": r["user_id"],
+                    "full_name": r["full_name"] or "",
+                    "student_id": r["student_id"] or "",
+                    "username": r["username"] or "",
+                    "exam_id": r["exam_id"],
+                    "subject": r["subject"],
+                    "start_time": _fmt_time(r["start_time"]),
+                    "end_time": _fmt_time(r["end_time"]),
+                })
+            return out
+        except Error as e:
+            logger.error("find_student_conflicts error: %s", e)
+            return []
+
+    def list_exams_for_user(self, user_id: int) -> List[Dict]:
+        """Danh sách lịch thi của 1 sinh viên kèm attended_at."""
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT e.id, e.subject, e.exam_date, e.start_time, e.end_time,
+                       e.room, e.note, es.attended_at
+                FROM exam_students es
+                JOIN exams e ON e.id = es.exam_id
+                WHERE es.user_id = %s
+                ORDER BY e.exam_date DESC, e.start_time DESC
+            """, (user_id,))
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            out = []
+            for r in rows:
+                out.append({
+                    "id": r[0],
+                    "subject": r[1],
+                    "exam_date": _fmt_date(r[2]),
+                    "start_time": _fmt_time(r[3]),
+                    "end_time": _fmt_time(r[4]),
+                    "room": r[5] or "",
+                    "note": r[6] or "",
+                    "attended_at": _fmt_dt(r[7]),
+                })
+            return out
+        except Error as e:
+            logger.error("list_exams_for_user error: %s", e)
+            return []
+
+    def unmark_attendance(self, exam_id: int, user_id: int) -> bool:
+        """Huỷ điểm danh (reset attended_at = NULL). True nếu có thay đổi."""
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE exam_students SET attended_at = NULL "
+                "WHERE exam_id = %s AND user_id = %s",
+                (exam_id, user_id),
+            )
+            conn.commit()
+            affected = cursor.rowcount
+            cursor.close()
+            conn.close()
+            return affected > 0
+        except Error as e:
+            logger.error("unmark_attendance error: %s", e)
+            return False
+
+    def mark_attendance(self, exam_id: int, user_id: int) -> Optional[Dict]:
+        """
+        Đánh dấu user_id có mặt ở exam_id. Chỉ set attended_at lần đầu
+        (các lần sau không overwrite → giữ mốc xuất hiện đầu tiên).
+        Trả {attended_at, first_time} hoặc None nếu sinh viên không thuộc lịch.
+        """
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, attended_at FROM exam_students "
+                "WHERE exam_id = %s AND user_id = %s",
+                (exam_id, user_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                cursor.close()
+                conn.close()
+                return None
+            es_id, attended_at = row
+            first_time = attended_at is None
+            if first_time:
+                cursor.execute(
+                    "UPDATE exam_students SET attended_at = NOW() WHERE id = %s",
+                    (es_id,),
+                )
+                conn.commit()
+                cursor.execute("SELECT attended_at FROM exam_students WHERE id = %s", (es_id,))
+                attended_at = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+            return {"attended_at": _fmt_dt(attended_at), "first_time": first_time}
+        except Error as e:
+            logger.error("mark_attendance error: %s", e)
+            return None

@@ -117,14 +117,48 @@ tr:hover td{background:var(--gray-50)}
 .verify-area-verify{max-width:570px}
 .cam-box{background:#111;border-radius:var(--radius);overflow:hidden;aspect-ratio:4/3;position:relative;
   box-shadow:var(--shadow-lg);width:100%}
-.cam-box video#verify-video{
+.cam-box video{
   position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
   z-index:0;pointer-events:none;background:#111;
 }
-#verify-canvas{
+.cam-box canvas{
   position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;
   display:block;background:transparent;
 }
+
+.stu-picker .stu-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.5rem;flex-wrap:wrap}
+.stu-picker .stu-count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 .45rem;margin-left:.35rem;
+  background:var(--primary);color:#fff;border-radius:999px;font-size:.72rem;font-weight:700}
+.stu-picker .stu-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.stu-picker .stu-chk{display:inline-flex;align-items:center;gap:.3rem;font-size:.78rem;color:var(--gray-600);cursor:pointer;user-select:none}
+.stu-picker .stu-chk input{margin:0;cursor:pointer}
+.stu-picker .stu-btn{background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;padding:.28rem .6rem;font-size:.75rem;color:var(--gray-700);cursor:pointer;transition:all .15s}
+.stu-picker .stu-btn:hover{background:var(--gray-200);color:var(--gray-900)}
+.stu-picker .stu-search{position:relative;margin-bottom:.4rem}
+.stu-picker .stu-search svg{position:absolute;left:.7rem;top:50%;transform:translateY(-50%);color:var(--gray-400);pointer-events:none}
+.stu-picker .stu-search input{width:100%;padding-left:2rem}
+.stu-picker .stu-list{border:1.5px solid var(--gray-200);border-radius:10px;max-height:240px;overflow:auto;background:#fff}
+.stu-picker .stu-list .stu-row{display:flex;align-items:center;gap:.7rem;padding:.55rem .7rem;border-bottom:1px solid var(--gray-100);cursor:pointer;transition:background .12s}
+.stu-picker .stu-list .stu-row:last-child{border-bottom:none}
+.stu-picker .stu-list .stu-row:hover{background:var(--gray-50)}
+.stu-picker .stu-list .stu-row.selected{background:rgba(59,130,246,.08)}
+.stu-picker .stu-list .stu-row input[type=checkbox]{width:16px;height:16px;margin:0;cursor:pointer;accent-color:var(--primary)}
+.stu-picker .stu-list .stu-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:.8rem;color:#fff;flex-shrink:0;text-transform:uppercase}
+.stu-picker .stu-list .stu-main{flex:1;min-width:0}
+.stu-picker .stu-list .stu-name{font-size:.88rem;font-weight:600;color:var(--gray-900);line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stu-picker .stu-list .stu-sub{font-size:.74rem;color:var(--gray-500);line-height:1.2;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stu-picker .stu-list .stu-mssv{font-family:ui-monospace,Menlo,monospace;font-size:.76rem;font-weight:600;color:var(--gray-700);background:var(--gray-100);padding:.15rem .45rem;border-radius:6px;flex-shrink:0}
+.stu-picker .stu-list .stu-face{display:inline-flex;align-items:center;gap:.2rem;font-size:.7rem;padding:.15rem .4rem;border-radius:999px;flex-shrink:0}
+.stu-picker .stu-list .stu-face.ok{background:rgba(16,185,129,.12);color:#059669}
+.stu-picker .stu-list .stu-face.no{background:rgba(245,158,11,.12);color:#d97706}
+.stu-picker .stu-list .stu-empty{padding:1.5rem;text-align:center;color:var(--gray-400);font-size:.85rem}
+
+.btn-att-act{font-family:var(--font);font-size:.75rem;font-weight:600;padding:.3rem .55rem;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap}
+.btn-att-act.mark{background:var(--primary);color:#fff}
+.btn-att-act.mark:hover{background:var(--primary-dark)}
+.btn-att-act.undo{background:#fff;color:var(--danger);border-color:var(--danger)}
+.btn-att-act.undo:hover{background:#FEE2E2}
 .verify-toolbar{margin-top:.75rem;display:flex;gap:.75rem;flex-wrap:wrap;align-items:center}
 .verify-hint-inline{font-size:.8rem;color:var(--gray-500)}
 
@@ -155,6 +189,14 @@ tr:hover td{background:var(--gray-50)}
     <a class="nav-item" data-section="verify">
       <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 11.75c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zm6 0c-.69 0-1.25.56-1.25 1.25s.56 1.25 1.25 1.25 1.25-.56 1.25-1.25-.56-1.25-1.25-1.25zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-.29.02-.58.05-.86 2.36-1.05 4.23-2.98 5.21-5.37C11.07 8.33 14.05 10 17.42 10c.78 0 1.53-.09 2.25-.26.21.71.33 1.47.33 2.26 0 4.41-3.59 8-8 8z"/></svg>
       Xác minh Khuôn mặt
+    </a>
+    <a class="nav-item" data-section="exams">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-2 .9-2 2v16c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H5V8h14v13zM7 10h5v5H7z"/></svg>
+      Lịch thi
+    </a>
+    <a class="nav-item" data-section="attendance">
+      <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+      Điểm danh
     </a>
   </div>
   <div class="sidebar-footer">
@@ -207,6 +249,129 @@ tr:hover td{background:var(--gray-50)}
       </div>
     </div>
   </div>
+
+  <!-- Section: Exams (Lịch thi) -->
+  <div class="section" id="sec-exams">
+    <div class="page-title">Lịch thi</div>
+    <div class="page-desc">Quản lý lịch thi và danh sách sinh viên dự thi.</div>
+    <div class="table-wrap">
+      <div class="table-header">
+        <span class="table-title">Danh sách lịch thi</span>
+        <button class="btn btn-primary btn-sm" onclick="openExamModal()">+ Tạo lịch thi</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>Môn thi</th><th>Ngày</th><th>Giờ</th>
+            <th>Phòng</th><th>Sĩ số</th><th>Đã điểm danh</th><th>Hành động</th>
+          </tr>
+        </thead>
+        <tbody id="exam-tbody">
+          <tr><td colspan="8" style="text-align:center;color:var(--gray-400)"><span class="spinner"></span> Đang tải...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Section: Attendance (Điểm danh) -->
+  <div class="section" id="sec-attendance">
+    <div class="page-title">Điểm danh bằng khuôn mặt</div>
+    <div class="page-desc">Chọn lịch thi để bắt đầu — sinh viên thuộc lịch được nhận diện sẽ tự động ghi mốc điểm danh.</div>
+
+    <div style="background:var(--white);padding:1rem;border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:1rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+      <label style="font-size:.85rem;font-weight:600;color:var(--gray-700)">Lịch thi:</label>
+      <select id="att-exam-select" style="flex:1;min-width:280px;padding:.55rem .8rem;border:1.5px solid var(--gray-200);border-radius:8px;font-family:var(--font);font-size:.85rem">
+        <option value="">-- Chọn lịch thi --</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="loadAttendanceExam()">🔄 Tải lại</button>
+    </div>
+
+    <div id="att-layout" style="display:none;grid-template-columns:minmax(0,570px) 1fr;gap:1.25rem;align-items:flex-start">
+      <div>
+        <div class="cam-box">
+          <video id="att-video" autoplay playsinline muted></video>
+          <canvas id="att-canvas" width="640" height="480"></canvas>
+        </div>
+        <div class="verify-toolbar">
+          <button class="btn btn-primary" id="btn-start-att" onclick="startAttendance()">📷 Bật camera &amp; điểm danh</button>
+          <button class="btn btn-ghost" id="btn-stop-att" onclick="stopAttendance()" style="display:none">⏹ Dừng</button>
+          <span class="verify-hint-inline" id="att-hint">Chọn lịch → bật camera.</span>
+        </div>
+      </div>
+
+      <div style="background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;min-width:0">
+        <div class="table-header">
+          <span class="table-title" id="att-info-title">Danh sách sinh viên</span>
+          <span id="att-progress" style="font-size:.8rem;color:var(--gray-500)"></span>
+        </div>
+        <div style="max-height:520px;overflow:auto">
+          <table>
+            <thead>
+              <tr><th>MSSV</th><th>Họ tên</th><th>Trạng thái</th><th>Thời gian</th><th style="width:120px">Thao tác</th></tr>
+            </thead>
+            <tbody id="att-tbody">
+              <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Exam Modal -->
+<div class="modal-overlay" id="modal-exam">
+  <div class="modal" style="max-width:640px;max-height:calc(100vh - 2rem);overflow-y:auto">
+    <h2 id="exam-modal-title">Tạo lịch thi</h2>
+    <div class="msg-box" id="exam-modal-msg" style="margin-bottom:.75rem"></div>
+    <input type="hidden" id="ex-id">
+    <div class="form-group"><label>Môn thi *</label><input id="ex-subject" placeholder="VD: Trí tuệ nhân tạo"></div>
+    <div class="form-group">
+      <label>Ngày thi *</label>
+      <input type="date" id="ex-date">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+      <div class="form-group">
+        <label>Giờ bắt đầu * <span style="color:var(--gray-400);font-weight:400">(24h)</span></label>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <select id="ex-start-h" style="flex:1"></select>
+          <span style="font-weight:600;color:var(--gray-500)">:</span>
+          <select id="ex-start-m" style="flex:1"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Giờ kết thúc * <span style="color:var(--gray-400);font-weight:400">(24h)</span></label>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <select id="ex-end-h" style="flex:1"></select>
+          <span style="font-weight:600;color:var(--gray-500)">:</span>
+          <select id="ex-end-m" style="flex:1"></select>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 2fr;gap:.6rem">
+      <div class="form-group"><label>Phòng *</label><input id="ex-room" placeholder="VD: A101"></div>
+      <div class="form-group"><label>Ghi chú</label><input id="ex-note" placeholder="Tuỳ chọn"></div>
+    </div>
+    <div class="form-group stu-picker">
+      <div class="stu-head">
+        <label style="margin:0">Sinh viên dự thi <span id="ex-selcount" class="stu-count">0</span></label>
+        <div class="stu-actions">
+          <label class="stu-chk"><input type="checkbox" id="ex-filter-face" onchange="renderExamStudentList(document.getElementById('ex-search').value)"> Chỉ SV đã đăng ký mặt</label>
+          <button type="button" class="stu-btn" onclick="selectAllExamStudents(true)">Chọn tất cả</button>
+          <button type="button" class="stu-btn" onclick="selectAllExamStudents(false)">Bỏ chọn</button>
+        </div>
+      </div>
+      <div class="stu-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input id="ex-search" placeholder="Tìm theo họ tên, MSSV hoặc username…">
+      </div>
+      <div id="ex-students" class="stu-list"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeExamModal()">Hủy</button>
+      <button class="btn btn-primary" onclick="saveExam()">Lưu</button>
+    </div>
+  </div>
 </div>
 
 <!-- Create/Edit Modal -->
@@ -242,11 +407,15 @@ function logout(){ localStorage.clear(); location.href='/' }
 // ── Navigation ──
 document.querySelectorAll('.nav-item').forEach(item=>{
   item.addEventListener('click',()=>{
-    if(item.dataset.section!=='verify') stopVerifyRealtime()
+    const sec=item.dataset.section
+    if(sec!=='verify') stopVerifyRealtime()
+    if(sec!=='attendance'){ stopAttendance(); stopAttPoll() }
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'))
     item.classList.add('active')
     document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'))
-    document.getElementById('sec-'+item.dataset.section).classList.add('active')
+    document.getElementById('sec-'+sec).classList.add('active')
+    if(sec==='exams') loadExams()
+    if(sec==='attendance') loadExamsForAttendance()
   })
 })
 
@@ -663,8 +832,717 @@ async function tickVerifyFrame(){
 
 function escapeHtml(s){
   const d=document.createElement('div')
-  d.textContent=s
+  d.textContent=s==null?'':String(s)
   return d.innerHTML
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// EXAMS — CRUD lịch thi
+// ════════════════════════════════════════════════════════════════════════════
+let allExams=[]
+let examModalSelected=new Set()  // user_id được chọn cho exam đang tạo/sửa
+
+async function loadExams(){
+  const tbody=document.getElementById('exam-tbody')
+  try{
+    const res=await fetch('/api/admin/exams',{headers:{'Authorization':'Bearer '+token}})
+    const data=await res.json()
+    if(!res.ok){ tbody.innerHTML=`<tr><td colspan="8" style="text-align:center;color:var(--danger)">${escapeHtml(data.detail||'Lỗi tải lịch thi')}</td></tr>`; return }
+    allExams=data.exams||[]
+    if(!allExams.length){
+      tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Chưa có lịch thi</td></tr>'
+      return
+    }
+    tbody.innerHTML=allExams.map(e=>`<tr>
+      <td>${e.id}</td>
+      <td><strong>${escapeHtml(e.subject)}</strong>${e.note?`<div style="font-size:.75rem;color:var(--gray-500)">${escapeHtml(e.note)}</div>`:''}</td>
+      <td>${escapeHtml(e.exam_date)}</td>
+      <td>${escapeHtml(e.start_time)} – ${escapeHtml(e.end_time)}</td>
+      <td>${escapeHtml(e.room||'—')}</td>
+      <td>${e.total_students}</td>
+      <td><span class="badge ${e.total_attended>=e.total_students&&e.total_students>0?'badge-yes':'badge-user'}">${e.total_attended}/${e.total_students}</span></td>
+      <td>
+        <button class="action-btn edit" onclick="openExamModal(${e.id})" title="Sửa">✏️</button>
+        <button class="action-btn delete" onclick="deleteExam(${e.id},'${escapeHtml(e.subject).replace(/'/g,"\\'")}',${e.total_attended||0})" title="Xoá">🗑️</button>
+      </td>
+    </tr>`).join('')
+  }catch(err){
+    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--danger)">Lỗi kết nối</td></tr>'
+  }
+}
+
+function populateTimeSelects(){
+  const pad=n=>String(n).padStart(2,'0')
+  const mkOpts=(max)=>Array.from({length:max},(_,i)=>`<option value="${pad(i)}">${pad(i)}</option>`).join('')
+  const hOpts=mkOpts(24), mOpts=mkOpts(60)
+  ;['ex-start-h','ex-end-h'].forEach(id=>{
+    const el=document.getElementById(id)
+    if(el&&!el.options.length) el.innerHTML=hOpts
+  })
+  ;['ex-start-m','ex-end-m'].forEach(id=>{
+    const el=document.getElementById(id)
+    if(el&&!el.options.length) el.innerHTML=mOpts
+  })
+}
+
+function setTimeSelects(prefix,hhmm){
+  const pad=n=>String(n).padStart(2,'0')
+  let h='00',m='00'
+  if(typeof hhmm==='string'&&/^\d{1,2}:\d{2}/.test(hhmm)){
+    const parts=hhmm.split(':')
+    h=pad(Math.max(0,Math.min(23,parseInt(parts[0],10)||0)))
+    m=pad(Math.max(0,Math.min(59,parseInt(parts[1],10)||0)))
+  }
+  document.getElementById(prefix+'-h').value=h
+  document.getElementById(prefix+'-m').value=m
+}
+
+function getTimeSelects(prefix){
+  const h=document.getElementById(prefix+'-h').value
+  const m=document.getElementById(prefix+'-m').value
+  if(!/^\d{2}$/.test(h)||!/^\d{2}$/.test(m)) return ''
+  return h+':'+m
+}
+
+async function openExamModal(examId){
+  populateTimeSelects()
+  if(!allUsers.length) await loadUsers()
+  examModalSelected=new Set()
+  document.getElementById('ex-id').value=examId||''
+  document.getElementById('exam-modal-title').textContent=examId?'Sửa lịch thi':'Tạo lịch thi'
+  document.getElementById('ex-subject').value=''
+  const today=new Date()
+  const pad=n=>String(n).padStart(2,'0')
+  document.getElementById('ex-date').value=`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`
+  document.getElementById('ex-date').min=document.getElementById('ex-date').value  // chặn chọn ngày quá khứ
+  setTimeSelects('ex-start','08:00')
+  setTimeSelects('ex-end','10:00')
+  document.getElementById('ex-room').value=''
+  document.getElementById('ex-note').value=''
+  document.getElementById('ex-search').value=''
+  const ff=document.getElementById('ex-filter-face'); if(ff) ff.checked=false
+  document.getElementById('exam-modal-msg').style.display='none'
+  document.getElementById('exam-modal-msg').className='msg-box'
+
+  if(examId){
+    try{
+      const r=await fetch('/api/admin/exams/'+examId,{headers:{'Authorization':'Bearer '+token}})
+      const e=await r.json()
+      if(r.ok){
+        document.getElementById('ex-subject').value=e.subject||''
+        if(e.exam_date){ document.getElementById('ex-date').value=e.exam_date; document.getElementById('ex-date').removeAttribute('min') }
+        setTimeSelects('ex-start',e.start_time||'08:00')
+        setTimeSelects('ex-end',e.end_time||'10:00')
+        document.getElementById('ex-room').value=e.room||''
+        document.getElementById('ex-note').value=e.note||''
+        ;(e.students||[]).forEach(s=>examModalSelected.add(s.id))
+      }
+    }catch(_){}
+  }
+  renderExamStudentList('')
+  document.getElementById('modal-exam').classList.add('show')
+}
+
+function closeExamModal(){document.getElementById('modal-exam').classList.remove('show')}
+
+const STU_AVATAR_COLORS=['#3b82f6','#8b5cf6','#ec4899','#f97316','#10b981','#06b6d4','#f59e0b','#ef4444','#6366f1','#14b8a6']
+function stuAvatarColor(id){return STU_AVATAR_COLORS[(id||0)%STU_AVATAR_COLORS.length]}
+function stuInitials(u){
+  const n=(u.full_name||u.username||'?').trim()
+  const parts=n.split(/\s+/).filter(Boolean)
+  if(parts.length>=2) return (parts[0][0]+parts[parts.length-1][0]).toUpperCase()
+  return n.slice(0,2).toUpperCase()
+}
+
+function _filterExamStudents(q){
+  const faceOnly=!!document.getElementById('ex-filter-face')?.checked
+  return allUsers.filter(u=>{
+    if(faceOnly && !u.face_registered) return false
+    if(!q) return true
+    return (u.username||'').toLowerCase().includes(q)
+      || (u.full_name||'').toLowerCase().includes(q)
+      || (u.student_id||'').toLowerCase().includes(q)
+  })
+}
+
+function renderExamStudentList(filter){
+  const box=document.getElementById('ex-students')
+  const q=(filter||'').toLowerCase().trim()
+  const rows=_filterExamStudents(q)
+  if(!rows.length){ box.innerHTML='<div class="stu-empty">Không có sinh viên phù hợp</div>'; updateExamSelCount(); return }
+  box.innerHTML=rows.map(u=>{
+    const sel=examModalSelected.has(u.id)
+    const checked=sel?'checked':''
+    const faceBadge=u.face_registered
+      ? '<span class="stu-face ok" title="Đã đăng ký khuôn mặt">✓ Đã ĐK</span>'
+      : '<span class="stu-face no" title="Chưa đăng ký khuôn mặt">Chưa ĐK</span>'
+    const mssv=u.student_id?`<span class="stu-mssv">${escapeHtml(u.student_id)}</span>`:''
+    const name=escapeHtml(u.full_name||u.username||'—')
+    const sub=escapeHtml(u.username||'')
+    return `<div class="stu-row ${sel?'selected':''}" data-uid="${u.id}" onclick="toggleExamStudentRow(event,${u.id})">
+      <input type="checkbox" ${checked} onclick="event.stopPropagation();toggleExamStudent(${u.id},this.checked,this)">
+      <div class="stu-avatar" style="background:${stuAvatarColor(u.id)}">${escapeHtml(stuInitials(u))}</div>
+      <div class="stu-main">
+        <div class="stu-name">${name}</div>
+        <div class="stu-sub">@${sub}</div>
+      </div>
+      ${mssv}
+      ${faceBadge}
+    </div>`
+  }).join('')
+  updateExamSelCount()
+}
+
+function toggleExamStudentRow(e,uid){
+  if(e.target && (e.target.tagName==='INPUT')) return
+  const row=e.currentTarget
+  const cb=row.querySelector('input[type=checkbox]')
+  const nv=!cb.checked
+  cb.checked=nv
+  toggleExamStudent(uid,nv,cb)
+}
+
+function toggleExamStudent(uid,checked,el){
+  if(checked) examModalSelected.add(uid); else examModalSelected.delete(uid)
+  if(el){
+    const row=el.closest('.stu-row')
+    if(row) row.classList.toggle('selected',checked)
+  }
+  updateExamSelCount()
+}
+
+function selectAllExamStudents(on){
+  const q=(document.getElementById('ex-search').value||'').toLowerCase().trim()
+  const rows=_filterExamStudents(q)
+  rows.forEach(u=>{ if(on) examModalSelected.add(u.id); else examModalSelected.delete(u.id) })
+  renderExamStudentList(document.getElementById('ex-search').value)
+}
+
+function updateExamSelCount(){
+  document.getElementById('ex-selcount').textContent=examModalSelected.size
+}
+
+document.addEventListener('input',(e)=>{
+  if(e.target&&e.target.id==='ex-search') renderExamStudentList(e.target.value)
+})
+
+async function saveExam(){
+  const id=document.getElementById('ex-id').value
+  const body={
+    subject:(document.getElementById('ex-subject').value||'').trim(),
+    exam_date:document.getElementById('ex-date').value||'',
+    start_time:getTimeSelects('ex-start'),
+    end_time:getTimeSelects('ex-end'),
+    room:(document.getElementById('ex-room').value||'').trim(),
+    note:(document.getElementById('ex-note').value||'').trim(),
+    student_ids:Array.from(examModalSelected||[]),
+  }
+  const msg=document.getElementById('exam-modal-msg')
+  const showErr=(t)=>{
+    if(msg){
+      msg.textContent=t
+      msg.className='msg-box show err'
+      msg.style.display='block'
+      try{ msg.scrollIntoView({block:'nearest',behavior:'smooth'}) }catch(_){}
+    }
+  }
+  if(!body.subject){ showErr('Thiếu Môn thi'); return }
+  if(!body.exam_date){ showErr('Thiếu Ngày thi'); return }
+  if(!body.start_time){ showErr('Thiếu Giờ bắt đầu'); return }
+  if(!body.end_time){ showErr('Thiếu Giờ kết thúc'); return }
+  if(!body.room){ showErr('Thiếu Phòng thi'); return }
+  if(body.end_time<=body.start_time){
+    showErr('Giờ kết thúc phải sau Giờ bắt đầu ('+body.start_time+' → '+body.end_time+')')
+    return
+  }
+  // Không cho đặt lịch thi trong quá khứ (chỉ khi TẠO MỚI; khi sửa lịch cũ vẫn cho phép)
+  // Nếu ngày thi là HÔM NAY → giờ bắt đầu phải sớm hơn hiện tại ít nhất 30 phút.
+  // Nếu ngày thi là ngày sau → cho phép mọi giờ.
+  if(!id){
+    const pad=n=>String(n).padStart(2,'0')
+    const now=new Date()
+    const today=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+    if(body.exam_date<today){ showErr('Ngày thi không được ở trong quá khứ'); return }
+    if(body.exam_date===today){
+      const startDt=new Date(body.exam_date+'T'+body.start_time+':00')
+      if(isNaN(startDt.getTime())){ showErr('Ngày/giờ không hợp lệ'); return }
+      const minStart=new Date(now.getTime()+30*60*1000)
+      if(startDt.getTime()<minStart.getTime()){
+        const msStr=`${pad(minStart.getHours())}:${pad(minStart.getMinutes())}`
+        showErr('Với lịch thi trong hôm nay, giờ bắt đầu phải sớm hơn hiện tại ít nhất 30 phút (sớm nhất: '+msStr+')')
+        return
+      }
+    }
+  }
+  try{
+    const url=id?'/api/admin/exams/'+id:'/api/admin/exams'
+    const method=id?'PUT':'POST'
+    console.log('[saveExam] fetching',method,url)
+    const r=await fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(body)})
+    let data={}
+    try{ data=await r.json() }catch(_){}
+    console.log('[saveExam] response',r.status,data)
+    if(!r.ok){
+      let detail=data&&data.detail
+      if(Array.isArray(detail)) detail=detail.map(d=>d.msg||JSON.stringify(d)).join(', ')
+      showErr(detail||('Lỗi '+r.status))
+      return
+    }
+    closeExamModal()
+    loadExams()
+  }catch(e){
+    console.error('[saveExam] fetch err',e)
+    showErr('Lỗi kết nối: '+(e&&e.message||e))
+  }
+}
+
+async function deleteExam(id,name,attendedCount){
+  attendedCount=attendedCount|0
+  let msg=`Xoá lịch thi "${name}"?`
+  if(attendedCount>0){
+    msg=`⚠ CẢNH BÁO: lịch "${name}" ĐÃ có ${attendedCount} sinh viên được điểm danh.\n`+
+        `Tất cả dữ liệu điểm danh này sẽ mất vĩnh viễn.\n\n`+
+        `Gõ "XOA" (không dấu) để xác nhận xoá:`
+    const ans=prompt(msg)
+    if((ans||'').trim().toUpperCase()!=='XOA') return
+  }else{
+    if(!confirm(msg+'\nThao tác này không thể hoàn tác.')) return
+  }
+  try{
+    const r=await fetch('/api/admin/exams/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}})
+    if(r.ok) loadExams()
+  }catch(_){}
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ATTENDANCE — Điểm danh bằng camera
+// ════════════════════════════════════════════════════════════════════════════
+let attStream=null
+let attRunning=false
+let attSending=false
+let attRaf=null
+let attEncodeCanvas=null
+let attEncodeCtx=null
+let attEncodeIsOffscreen=false
+let attProcFps=0
+let attLastProcAt=0
+let attDevice=''
+let attState={faces:[],bottomText:'',match:null}
+let attStarting=false
+let currentExam=null          // {id, subject, students:[...]}
+let attendanceById=new Map()  // user_id → {attended_at, ...student}
+let markInflight=new Set()    // user_id đang chờ POST attendance
+let attPollTimer=null         // setInterval id để đồng bộ với server
+const ATT_POLL_MS=5000
+
+async function loadExamsForAttendance(){
+  const sel=document.getElementById('att-exam-select')
+  const prev=sel.value
+  try{
+    const r=await fetch('/api/admin/exams',{headers:{'Authorization':'Bearer '+token}})
+    const data=await r.json()
+    if(!r.ok) return
+    const list=data.exams||[]
+    sel.innerHTML='<option value="">-- Chọn lịch thi --</option>'+list.map(e=>
+      `<option value="${e.id}">${escapeHtml(e.subject)} — ${escapeHtml(e.exam_date)} ${escapeHtml(e.start_time)}–${escapeHtml(e.end_time)} (${e.total_students} SV)</option>`
+    ).join('')
+    if(prev) sel.value=prev
+  }catch(_){}
+}
+
+document.addEventListener('change',(e)=>{
+  if(e.target&&e.target.id==='att-exam-select'){
+    stopAttendance()
+    stopAttPoll()
+    const id=e.target.value
+    if(id) loadAttendanceExam(id)
+    else {
+      currentExam=null
+      attendanceById=new Map()
+      document.getElementById('att-layout').style.display='none'
+    }
+  }
+})
+
+function startAttPoll(){
+  stopAttPoll()
+  attPollTimer=setInterval(pollAttendance, ATT_POLL_MS)
+}
+function stopAttPoll(){
+  if(attPollTimer){ clearInterval(attPollTimer); attPollTimer=null }
+}
+async function pollAttendance(){
+  if(!currentExam) return
+  // Không chạy khi đang có request POST/DELETE đi
+  if(markInflight.size>0) return
+  try{
+    const r=await fetch('/api/admin/exams/'+currentExam.id,{headers:{'Authorization':'Bearer '+token}})
+    if(!r.ok) return
+    const data=await r.json()
+    ;(data.students||[]).forEach(s=>{
+      const cur=attendanceById.get(s.id)
+      if(!cur || (cur.attended_at||'')!==(s.attended_at||'')){
+        attendanceById.set(s.id,{...cur,...s})
+      }
+    })
+    renderAttendanceTable()
+  }catch(_){}
+}
+
+async function loadAttendanceExam(idArg){
+  const sel=document.getElementById('att-exam-select')
+  const id=idArg||sel.value
+  if(!id){ document.getElementById('att-layout').style.display='none'; return }
+  try{
+    const r=await fetch('/api/admin/exams/'+id,{headers:{'Authorization':'Bearer '+token}})
+    const data=await r.json()
+    if(!r.ok){ alert(data.detail||'Không tải được lịch thi'); return }
+    currentExam=data
+    attendanceById=new Map()
+    ;(data.students||[]).forEach(s=>attendanceById.set(s.id,s))
+    document.getElementById('att-layout').style.display='grid'
+    document.getElementById('att-info-title').textContent=
+      `${data.subject} — ${data.exam_date} ${data.start_time}–${data.end_time}${data.room?' • '+data.room:''}`
+    renderAttendanceTable()
+    startAttPoll()
+  }catch(_){ alert('Lỗi kết nối') }
+}
+
+function _attLateMinutes(s){
+  if(!s.attended_at || !currentExam) return null
+  try{
+    const at=new Date(s.attended_at.replace(' ','T'))
+    const start=new Date(currentExam.exam_date+'T'+(currentExam.start_time||'00:00:00'))
+    const diff=Math.round((at-start)/60000)
+    return diff
+  }catch(_){ return null }
+}
+
+function renderAttendanceTable(){
+  const tbody=document.getElementById('att-tbody')
+  const students=Array.from(attendanceById.values())
+  const done=students.filter(s=>s.attended_at).length
+  document.getElementById('att-progress').textContent=`Đã điểm danh: ${done}/${students.length}`
+  if(!students.length){
+    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--gray-400)">Chưa có sinh viên</td></tr>'
+    return
+  }
+  tbody.innerHTML=students.map(s=>{
+    const ok=!!s.attended_at
+    let statusHtml
+    if(ok){
+      const late=_attLateMinutes(s)
+      if(late===null) statusHtml='<span class="badge badge-yes">✓ Có mặt</span>'
+      else if(late<=0) statusHtml='<span class="badge badge-yes" title="Điểm danh trước/đúng giờ bắt đầu">✓ Đúng giờ</span>'
+      else statusHtml=`<span class="badge badge-yes" style="background:var(--warning-light);color:#92400E" title="Điểm danh sau giờ bắt đầu">✓ Muộn ${late}\u2032</span>`
+    }else{
+      statusHtml='<span class="badge badge-no">Chưa</span>'
+    }
+    const faceWarn=s.face_registered?'':'<span style="color:var(--warning);font-size:.7rem;margin-left:.3rem">(chưa ĐK mặt)</span>'
+    const actionHtml=ok
+      ? `<button class="btn-att-act undo" title="Huỷ điểm danh" onclick="manualUnmarkAttendance(${s.id})">↺ Huỷ</button>`
+      : `<button class="btn-att-act mark" title="Đánh dấu có mặt thủ công" onclick="manualMarkAttendance(${s.id})">✓ Có mặt</button>`
+    return `<tr${ok?' style="background:var(--success-light)"':''}>
+      <td><strong>${escapeHtml(s.student_id||'—')}</strong></td>
+      <td>${escapeHtml(s.full_name||s.username||'—')}${faceWarn}</td>
+      <td>${statusHtml}</td>
+      <td style="font-family:monospace;font-size:.8rem">${escapeHtml(s.attended_at||'—')}</td>
+      <td>${actionHtml}</td>
+    </tr>`
+  }).join('')
+}
+
+async function manualMarkAttendance(uid){
+  if(!currentExam) return
+  if(markInflight.has(uid)) return
+  markInflight.add(uid)
+  try{
+    const r=await fetch(`/api/admin/exams/${currentExam.id}/attendance/${uid}`,{
+      method:'POST', headers:{'Authorization':'Bearer '+token}
+    })
+    const d=await r.json().catch(()=>({}))
+    if(!r.ok){ alert(d.detail||'Không đánh dấu được'); return }
+    const s=attendanceById.get(uid)
+    if(s){ s.attended_at=d.attended_at; attendanceById.set(uid,s); renderAttendanceTable() }
+  }finally{ markInflight.delete(uid) }
+}
+
+async function manualUnmarkAttendance(uid){
+  if(!currentExam) return
+  const s=attendanceById.get(uid)
+  const nm=(s&&(s.full_name||s.username))||'sinh viên này'
+  if(!confirm(`Huỷ điểm danh của ${nm}?`)) return
+  try{
+    const r=await fetch(`/api/admin/exams/${currentExam.id}/attendance/${uid}`,{
+      method:'DELETE', headers:{'Authorization':'Bearer '+token}
+    })
+    const d=await r.json().catch(()=>({}))
+    if(!r.ok){ alert(d.detail||'Không huỷ được'); return }
+    if(s){ s.attended_at=null; attendanceById.set(uid,s); renderAttendanceTable() }
+  }catch(_){ alert('Lỗi kết nối') }
+}
+
+async function startAttendance(){
+  if(!currentExam){ alert('Chọn lịch thi trước'); return }
+  if(attRunning||attStarting) return
+  attStarting=true
+  const video=document.getElementById('att-video')
+  attState={faces:[],bottomText:'Đang quét…',match:null}
+  attProcFps=0; attLastProcAt=0
+  fetchAttDevice()
+  try{
+    attStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:480}})
+    video.srcObject=attStream
+  }catch(e){ attStarting=false; alert('Không mở được camera'); return }
+  attStarting=false
+  document.getElementById('btn-start-att').style.display='none'
+  document.getElementById('btn-stop-att').style.display='inline-flex'
+  document.getElementById('att-hint').textContent='Đang điểm danh — tự ghi khi sinh viên xuất hiện.'
+  try{ await video.play() }catch(_){}
+  if(attRaf) cancelAnimationFrame(attRaf)
+  attRaf=requestAnimationFrame(attDrawLoop)
+  attRunning=true
+  scheduleAttTick(0)
+}
+
+function stopAttendance(){
+  attRunning=false
+  if(attRaf){ cancelAnimationFrame(attRaf); attRaf=null }
+  attSending=false
+  attProcFps=0; attLastProcAt=0
+  if(attStream&&attStream.getTracks){ attStream.getTracks().forEach(t=>t.stop()); attStream=null }
+  const video=document.getElementById('att-video')
+  if(video) video.srcObject=null
+  const cv=document.getElementById('att-canvas')
+  if(cv){ const c=cv.getContext('2d'); c.clearRect(0,0,cv.width,cv.height) }
+  const bs=document.getElementById('btn-start-att'), be=document.getElementById('btn-stop-att')
+  if(bs) bs.style.display='inline-flex'
+  if(be) be.style.display='none'
+  const h=document.getElementById('att-hint'); if(h) h.textContent='Chọn lịch → bật camera.'
+}
+
+async function fetchAttDevice(){
+  try{
+    const r=await fetch('/api/face/verify/device')
+    const d=await r.json()
+    attDevice=`InsightFace: ${d.insightface||'?'} | FAS: ${d.fas||'?'}`
+  }catch(_){ attDevice='' }
+}
+
+function scheduleAttTick(delay){
+  if(!attRunning) return
+  setTimeout(async ()=>{
+    if(!attRunning) return
+    await tickAttFrame()
+    scheduleAttTick(0)
+  },Math.max(0,delay|0))
+}
+
+function ensureAttEncodeCanvas(w,h){
+  if(!attEncodeCanvas){
+    if(typeof OffscreenCanvas!=='undefined'){
+      attEncodeCanvas=new OffscreenCanvas(w,h); attEncodeIsOffscreen=true
+    }else{
+      attEncodeCanvas=document.createElement('canvas'); attEncodeIsOffscreen=false
+    }
+    attEncodeCtx=attEncodeCanvas.getContext('2d')
+  }
+  if(attEncodeCanvas.width!==w) attEncodeCanvas.width=w
+  if(attEncodeCanvas.height!==h) attEncodeCanvas.height=h
+}
+
+async function encodeAttFrame(video,q){
+  const w=video.videoWidth,h=video.videoHeight
+  ensureAttEncodeCanvas(w,h)
+  attEncodeCtx.drawImage(video,0,0,w,h)
+  if(attEncodeIsOffscreen&&attEncodeCanvas.convertToBlob){
+    return attEncodeCanvas.convertToBlob({type:'image/jpeg',quality:q})
+  }
+  return new Promise((resolve,reject)=>{
+    try{ attEncodeCanvas.toBlob(b=>b?resolve(b):reject(new Error('toBlob')),'image/jpeg',q) }catch(e){reject(e)}
+  })
+}
+
+async function tickAttFrame(){
+  if(attSending) return
+  const video=document.getElementById('att-video')
+  if(!video||!video.videoWidth) return
+  attSending=true
+  const ac=new AbortController()
+  const to=setTimeout(()=>ac.abort(),25000)
+  try{
+    const blob=await encodeAttFrame(video,1.0)
+    const fd=new FormData()
+    fd.append('frame',blob,'frame.jpg')
+    const res=await fetch('/api/face/verify',{method:'POST',body:fd,signal:ac.signal})
+    clearTimeout(to)
+    const data=await res.json()
+    const faces=Array.isArray(data.faces)?data.faces:[]
+    attState={ faces, bottomText:faces.length?'':(data.message||''), match:!!data.match }
+    const now=performance.now()
+    if(attLastProcAt>0){
+      const dt=(now-attLastProcAt)/1000
+      if(dt>0&&dt<5){ const inst=1/dt; attProcFps=attProcFps>0?(0.8*attProcFps+0.2*inst):inst }
+    }
+    attLastProcAt=now
+
+    // Ghi điểm danh cho những face match + thuộc lịch + chưa điểm danh
+    if(currentExam){
+      faces.forEach(f=>{
+        if(!(f.match&&f.user)) return
+        // map: tìm sinh viên trong lịch theo student_id (ưu tiên) hoặc full_name (fallback)
+        const uid=findStudentIdFromFace(f.user)
+        if(uid==null) return
+        const stu=attendanceById.get(uid)
+        if(!stu||stu.attended_at) return
+        if(markInflight.has(uid)) return
+        markInflight.add(uid)
+        markAttendanceOnServer(currentExam.id,uid).finally(()=>markInflight.delete(uid))
+      })
+    }
+  }catch(e){
+    clearTimeout(to)
+    attState={ faces:[], bottomText: ac.signal.aborted?'Hết thời chờ server':'Lỗi kết nối', match:false }
+  }finally{
+    clearTimeout(to); attSending=false
+  }
+}
+
+function findStudentIdFromFace(u){
+  if(!u) return null
+  const sid=(u.student_id||'').trim().toLowerCase()
+  const fname=(u.full_name||'').trim().toLowerCase()
+  for(const s of attendanceById.values()){
+    if(sid && (s.student_id||'').trim().toLowerCase()===sid) return s.id
+  }
+  for(const s of attendanceById.values()){
+    if(fname && ((s.full_name||'').trim().toLowerCase()===fname || (s.username||'').trim().toLowerCase()===fname)) return s.id
+  }
+  return null
+}
+
+async function markAttendanceOnServer(examId,userId){
+  try{
+    const r=await fetch(`/api/admin/exams/${examId}/attendance/${userId}`,{
+      method:'POST',headers:{'Authorization':'Bearer '+token}
+    })
+    const d=await r.json()
+    if(r.ok){
+      const s=attendanceById.get(userId)
+      if(s){ s.attended_at=d.attended_at; attendanceById.set(userId,s); renderAttendanceTable() }
+    }
+  }catch(_){}
+}
+
+function attDrawLoop(){
+  try{
+  const video=document.getElementById('att-video')
+  const canvas=document.getElementById('att-canvas')
+  if(!video||!canvas){
+    /* luôn RAF ở cuối hàm */
+  }else{
+  const vw=video.videoWidth
+  const vh=video.videoHeight
+  const w=vw||640
+  const h=vh||480
+  if(canvas.width!==w||canvas.height!==h){
+    canvas.width=w
+    canvas.height=h
+  }
+  const ctx=canvas.getContext('2d')
+  ctx.clearRect(0,0,w,h)
+  if(!vw||!vh){
+    /* chờ metadata stream */
+  }else{
+
+  const scale=Math.max(w/640,0.45)
+  const pad=Math.round(14*scale)
+
+  function strokeFillText(txt,x,y,fill,strokeW,baseline){
+    const s=txt==null?'':String(txt)
+    if(!s) return
+    ctx.textBaseline=baseline||'top'
+    ctx.lineWidth=strokeW||Math.max(2,Math.round(2*scale))
+    ctx.strokeStyle='#000'
+    ctx.strokeText(s,x,y)
+    ctx.fillStyle=fill
+    ctx.fillText(s,x,y)
+  }
+
+  ctx.font=`bold ${Math.round(20*scale)}px sans-serif`
+  ctx.textBaseline='top'
+  const fpsText='FPS: '+(attProcFps>0?attProcFps.toFixed(1):'0')
+  strokeFillText(fpsText,pad,pad,'#00FFFF')
+  if(attDevice){
+    ctx.font=`bold ${Math.round(14*scale)}px sans-serif`
+    const fpsH=measureTextHeight(ctx,fpsText)
+    strokeFillText(attDevice,pad,pad+fpsH+Math.round(3*scale),'#CCFFCC',Math.max(2,Math.round(2*scale)),'top')
+  }
+
+  const faces=attState.faces||[]
+  if(faces.length){
+    const fsN=Math.max(13,Math.round(15*scale))
+    const fsM=Math.max(11,Math.round(13*scale))
+    const gap=Math.round(3*scale)
+    for(let fi=0;fi<faces.length;fi++){
+      const f=faces[fi]
+      const bb=f&&f.bbox
+      if(!bb||bb.length!==4) continue
+      const x1=+bb[0],y1=+bb[1],x2=+bb[2],y2=+bb[3]
+      const bw=x2-x1,bh=y2-y1
+      const bboxOk=bw>0&&bh>0&&isFinite(bw)&&isFinite(bh)&&isFinite(x1)&&isFinite(y1)
+      if(!bboxOk) continue
+      let stroke='#FFCC00'
+      if(f.match===true) stroke='#00FF00'
+      else if(f.match===false) stroke='#FF4444'
+      ctx.strokeStyle=stroke
+      ctx.lineWidth=Math.max(2,Math.round(2*scale))
+      ctx.strokeRect(x1,y1,bw,bh)
+
+      const sc=formatScoreVi(f.score)
+      if(f.match===true&&f.user){
+        const n=f.user.full_name!=null?String(f.user.full_name):'—'
+        const line1=sc?`${n}  (${sc})`:n
+        const line2='MSV: '+(f.user.student_id!=null?String(f.user.student_id):'—')
+        const lines=[line1,line2]
+        const fonts=[`bold ${fsN}px sans-serif`,`${fsM}px sans-serif`]
+        const colors=['#00FF00','#CCFFCC']
+        let blockH=0
+        for(let i=0;i<lines.length;i++){
+          ctx.font=fonts[i]
+          blockH+=measureTextHeight(ctx,lines[i])+gap
+        }
+        let yt=y1-4-blockH
+        if(yt<pad){ yt=y2+6 }
+        for(let i=0;i<lines.length;i++){
+          ctx.font=fonts[i]
+          strokeFillText(lines[i],x1,yt,colors[i],Math.max(2,Math.round(3*scale)),'top')
+          yt+=measureTextHeight(ctx,lines[i])+gap
+        }
+      }else{
+        const raw=((f.message||'').trim().slice(0,48))||'—'
+        const line1=sc?`${raw}  (${sc})`:raw
+        ctx.font=`bold ${fsN}px sans-serif`
+        let yt=y1-4-measureTextHeight(ctx,line1)
+        if(yt<pad){ yt=y2+6 }
+        strokeFillText(line1,x1,yt,'#FF8888',Math.max(2,Math.round(3*scale)),'top')
+      }
+    }
+  }else{
+    ctx.font=`bold ${Math.round(17*scale)}px sans-serif`
+    ctx.textBaseline='bottom'
+    const hint=(attState.bottomText!=null&&attState.bottomText!=='')
+      ?attState.bottomText
+      :(attState.match===null?'Đang quét…':'')
+    if(hint){
+      strokeFillText(hint,pad,h-pad,hint.includes('Đang')?'#FFCC00':'#FF6666',Math.max(2,Math.round(2*scale)),'bottom')
+    }
+  }
+  }}
+  }catch(e){
+    console.error('attDrawLoop',e)
+  }
+  attRaf=requestAnimationFrame(attDrawLoop)
 }
 
 // ── Init ──
