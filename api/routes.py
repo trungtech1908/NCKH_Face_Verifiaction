@@ -510,20 +510,9 @@ def _validate_exam_payload(subject: str, exam_date: str, start_time: str, end_ti
     if en <= st:
         raise HTTPException(400, "Giờ kết thúc phải sau giờ bắt đầu")
     if check_future:
-        now = _dt.datetime.now()
-        today = now.date()
+        today = _dt.datetime.now().date()
         if d < today:
             raise HTTPException(400, "Ngày thi không được ở trong quá khứ")
-        if d == today:
-            start_dt = _dt.datetime.combine(d, st)
-            min_start = now + _dt.timedelta(minutes=EXAM_MIN_LEAD_MINUTES)
-            if start_dt < min_start:
-                raise HTTPException(
-                    400,
-                    f"Với lịch thi trong hôm nay, giờ bắt đầu phải sớm hơn hiện tại "
-                    f"ít nhất {EXAM_MIN_LEAD_MINUTES} phút "
-                    f"(sớm nhất: {min_start.strftime('%H:%M')})",
-                )
     if check_room_conflict and (room or "").strip():
         conflict = get_exams().find_room_conflict(
             room=room.strip(),

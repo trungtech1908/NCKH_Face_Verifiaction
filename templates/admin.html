@@ -1056,23 +1056,11 @@ async function saveExam(){
     return
   }
   // Không cho đặt lịch thi trong quá khứ (chỉ khi TẠO MỚI; khi sửa lịch cũ vẫn cho phép)
-  // Nếu ngày thi là HÔM NAY → giờ bắt đầu phải sớm hơn hiện tại ít nhất 30 phút.
-  // Nếu ngày thi là ngày sau → cho phép mọi giờ.
   if(!id){
     const pad=n=>String(n).padStart(2,'0')
     const now=new Date()
     const today=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
     if(body.exam_date<today){ showErr('Ngày thi không được ở trong quá khứ'); return }
-    if(body.exam_date===today){
-      const startDt=new Date(body.exam_date+'T'+body.start_time+':00')
-      if(isNaN(startDt.getTime())){ showErr('Ngày/giờ không hợp lệ'); return }
-      const minStart=new Date(now.getTime()+30*60*1000)
-      if(startDt.getTime()<minStart.getTime()){
-        const msStr=`${pad(minStart.getHours())}:${pad(minStart.getMinutes())}`
-        showErr('Với lịch thi trong hôm nay, giờ bắt đầu phải sớm hơn hiện tại ít nhất 30 phút (sớm nhất: '+msStr+')')
-        return
-      }
-    }
   }
   try{
     const url=id?'/api/admin/exams/'+id:'/api/admin/exams'

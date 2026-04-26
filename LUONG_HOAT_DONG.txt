@@ -175,12 +175,10 @@ Dữ liệu payload: subject, exam_date (YYYY-MM-DD), start_time (HH:MM),
 Validate khi TẠO MỚI:
   1) subject, exam_date, start_time, end_time, room bắt buộc.
   2) end_time > start_time.
-  3) exam_date không ở quá khứ.
-  4) Nếu exam_date == hôm nay → start_time ≥ now + 30 phút.
-     Nếu exam_date > hôm nay → giờ nào cũng được.
-  5) Không trùng phòng trùng giờ:
+  3) exam_date không ở quá khứ (giờ bắt đầu thì không kiểm tra so với now).
+  4) Không trùng phòng trùng giờ:
         cùng exam_date, cùng room, (existing.start<new.end AND existing.end>new.start)
-  6) Không trùng giờ cho sinh viên:
+  5) Không trùng giờ cho sinh viên:
         với mỗi student_id sẽ gán, kiểm tra SV đó đã nằm trong lịch khác có
         exam_date trùng và khoảng giờ chồng chéo không → báo lỗi chi tiết.
 
@@ -282,7 +280,7 @@ Flow trong UI admin:
   vote theo user_id — cần ≥ 2 hit cùng user_id mới công nhận.
 
 [EXAM CREATE]
-- Ngày > quá khứ; nếu hôm nay thì giờ bắt đầu ≥ now+30ph.
+- Ngày không ở quá khứ (giờ bắt đầu không bị giới hạn so với now).
 - end_time > start_time.
 - Phòng bắt buộc.
 - Không đè phòng trùng giờ.
