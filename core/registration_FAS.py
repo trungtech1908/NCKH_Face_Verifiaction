@@ -148,7 +148,7 @@ class FaceRegistrationSession:
         self._face_app = face_app
 
         # Head pose estimator and embedder
-        self._estimator = HeadPoseEstimator()
+        self._estimator = HeadPoseEstimator(face_app=self._face_app)
         self._embedder = FaceEmbedder()
 
         self._result = RegistrationResult(user_id=user_id)
@@ -197,7 +197,8 @@ class FaceRegistrationSession:
                 faces = None
 
         if not faces:
-            # Fallback: try head_pose detector (slower)
+            # Fallback: estimator tự gọi InsightFace lazily nếu được, dù
+            # thực tế face_app gần như luôn có sẵn ở đây.
             pose = self._estimator.estimate(frame_bgr)
             if pose is None:
                 return self._ev("no_face", "Không thấy khuôn mặt", progress=prog)
@@ -228,13 +229,15 @@ class FaceRegistrationSession:
             self._reset_step()
             return self._ev("timeout", "Hết giờ", progress=self.get_progress())
 
-        # For head-pose estimation, run estimator on cropped face (avoid re-detection over full image)
+        # Head-pose: dùng trực tiếp 5 landmark mà InsightFace đã trả ở best_face,
+        # không phải detect lại bằng model phụ.
         try:
-            crop_for_pose = get_crop_face(frame_bgr, box=face_bbox, scale=1.0)
-            pose = self._estimator.estimate(crop_for_pose)
-            # estimator returns bbox relative to crop; override to the original insightface bbox for consistency
+            if best_face is not None:
+                pose = self._estimator.estimate(best_face)
+            else:
+                pose = self._estimator.estimate(frame_bgr)
             if pose is not None:
-                pose.bbox = face_bbox
+                pose.bbox = list(face_bbox)
         except Exception:
             pose = None
 
