@@ -27,21 +27,16 @@ Hai role:
 - user  : xem profile, đăng ký khuôn mặt (1 lần duy nhất), xem lịch thi
           + trạng thái điểm danh của bản thân.
 
+Lưu ý: KHÔNG có self-registration. Tài khoản user chỉ được tạo bởi admin
+qua tab "Quản lý sinh viên" (POST /api/admin/users).
+
 ================================================================================
 1. LUỒNG CHUNG KHI KHÔNG ĐĂNG NHẬP
 ================================================================================
-/                → landing page (giới thiệu, nút Đăng ký / Đăng nhập)
-/register        → form đăng ký tài khoản
+/                → landing page (chỉ còn 1 nút "Đăng nhập")
 /login           → form đăng nhập
 
-(1) Đăng ký tài khoản
-    client POST /api/register  { username, email, password, full_name, student_id }
-    - Validate + kiểm tra trùng username / email / student_id
-    - Mật khẩu → bcrypt hash
-    - role mặc định = "user", face_registered = false
-    - Lưu vào users, trả message thành công.
-
-(2) Đăng nhập
+(1) Đăng nhập
     client POST /api/login  { username, password }
     - So khớp bcrypt
     - Sinh JWT (sub=user_id, role)
@@ -209,8 +204,9 @@ Endpoints:
 - DELETE /api/admin/exams/{id}/attendance/{user_id}   huỷ điểm danh (đánh nhầm)
 
 Cả hai endpoint đều kiểm tra "cửa sổ điểm danh":
-    [start_time - 15 phút, end_time + 15 phút]  của exam_date
-Ngoài cửa sổ này trả 400 với gợi ý giờ mở.
+    [start_time, start_time + 30 phút]  của exam_date
+(Tức 30 phút tính từ thời điểm bắt đầu thi.)
+Ngoài cửa sổ này trả 400 với gợi ý giờ mở/đóng.
 
 Flow trong UI admin:
   a) Admin vào tab Điểm danh, chọn lịch thi từ dropdown.
@@ -226,8 +222,23 @@ Flow trong UI admin:
              và chưa attended_at → POST mark attendance.
            * Nếu đã attended_at → vẫn vẽ tên + "Đã điểm danh" (không POST lại).
            * Nếu không thuộc lịch thi → vẽ "Không có trong lịch" (vàng).
+       - Quy tắc tích luỹ score (client) trước khi mark:
+           * Mỗi tick, với mỗi face match cho 1 user trong lịch, push cosine
+             similarity (Qdrant score) vào buffer riêng cho user đó.
+           * Khi buffer đạt ATT_FRAMES_TO_MARK = 3 frame liên tiếp ⇒ mark.
+           * Score lưu vào DB là TRUNG BÌNH của 3 score đó (không phải score
+             1 frame duy nhất, không phải det_score của bbox).
+           * Nếu user "biến mất" ATT_BUFFER_RESET_MISS = 5 frame liên tiếp
+             trước khi đủ ngưỡng ⇒ reset buffer.
        - Server mark_attendance:
            * Chỉ set attended_at = NOW() nếu lần đầu (first_time=True).
+           * Khi điểm danh tự động qua camera, client còn gửi kèm:
+                - photo : JPEG đã crop quanh khuôn mặt (lưu vào
+                          exam_students.attendance_photo, kiểu LONGBLOB)
+                - score : cosine similarity TRUNG BÌNH của 3 frame match
+                          gần nhất (lưu vào exam_students.attendance_score,
+                          kiểu FLOAT)
+             ⇒ Lúc lần đầu, server lưu cả 2 cùng với attended_at.
            * Các lần sau giữ mốc cũ — tránh ghi đè khi SV đi lại ra vào.
        - Canvas vẽ bbox, tên, MSSV, score, FPS, device giống verify.
   d) Bảng SV auto poll GET /api/admin/exams/{id} mỗi 5 giây để đồng bộ trạng
@@ -291,16 +302,18 @@ Flow trong UI admin:
 - Cho phép sửa lịch đã qua (không check future).
 
 [ATTENDANCE]
-- Chỉ trong cửa sổ [start-15p, end+15p].
+- Chỉ trong cửa sổ [start_time, start_time + 30 phút].
 - Chỉ set attended_at lần đầu (không ghi đè).
-- Admin có thể huỷ bằng DELETE (trong cửa sổ).
+- Khi điểm danh tự động qua camera: lưu kèm attendance_score (FLOAT) và
+  attendance_photo (LONGBLOB JPEG đã crop) vào exam_students.
+- Admin có thể huỷ bằng DELETE (trong cửa sổ) — sẽ reset cả 3 cột:
+  attended_at, attendance_score, attendance_photo về NULL.
 
 ================================================================================
 6. MA TRẬN QUYỀN
 ================================================================================
 Endpoint                                               Public  User  Admin
 ---------------------------------------------------------------------------
-POST /api/register                                      ✓       ✓     ✓
 POST /api/login                                         ✓       ✓     ✓
 GET  /api/me                                            ✗       ✓     ✓
 GET  /api/me/exams                                      ✗       ✓     ✓

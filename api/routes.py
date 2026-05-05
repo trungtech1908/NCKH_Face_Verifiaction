@@ -2,8 +2,8 @@
 FastAPI Routes
 --------------
 Account:
-  POST /api/register          — đăng ký tài khoản (chỉ account, không face)
   POST /api/login             — đăng nhập, trả JWT kèm role
+  (Tài khoản user CHỈ được tạo bởi admin — không có self-registration.)
 
 Face:
   POST /api/face/start/{uid}  — bắt đầu face registration session
@@ -22,7 +22,6 @@ User:
 
 Pages:
   GET /                   — landing
-  GET /register           — form đăng ký account
   GET /login              — form đăng nhập
   GET /admin              — admin dashboard
   GET /user               — user dashboard
@@ -33,8 +32,8 @@ import threading, logging, time
 import numpy as np
 import cv2
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Request
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Request
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -222,10 +221,6 @@ def _embedding_duplicate_check(qdrant: QdrantFaceStore, embedding: np.ndarray,
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
-
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -244,40 +239,9 @@ async def face_register_page(request: Request):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# API: REGISTER (chỉ account, không face)
-# ══════════════════════════════════════════════════════════════════════════════
-
-class RegisterRequest(BaseModel):
-    username: str
-    email: str
-    password: str
-    full_name: str = ""
-    student_id: str = ""
-
-@app.post("/api/register")
-async def register_account(body: RegisterRequest):
-    mysql = get_mysql()
-    if mysql.get_user_by_username(body.username):
-        raise HTTPException(409, f"Username '{body.username}' đã tồn tại")
-    if mysql.get_user_by_email(body.email):
-        raise HTTPException(409, f"Email '{body.email}' đã được dùng")
-
-    pwd_hash = hash_password(body.password)
-    user_id = mysql.create_user(
-        username=body.username,
-        email=body.email,
-        password_hash=pwd_hash,
-        full_name=body.full_name,
-        student_id=body.student_id,
-    )
-    if user_id is None:
-        raise HTTPException(500, "Lỗi tạo tài khoản")
-
-    return {"message": "Đăng ký thành công!", "user_id": user_id}
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 # API: LOGIN
+# (Đăng ký tài khoản đã bị bỏ — chỉ admin được tạo user mới qua
+#  POST /api/admin/users)
 # ══════════════════════════════════════════════════════════════════════════════
 
 class LoginRequest(BaseModel):
@@ -455,35 +419,37 @@ class ExamUpdate(BaseModel):
 # Giờ bắt đầu phải sớm hơn hiện tại ít nhất 30 phút (tức: start >= now + 30min)
 EXAM_MIN_LEAD_MINUTES = 30
 
-# Cửa sổ cho phép điểm danh: [start - X phút, end + X phút] của ngày thi
-ATTENDANCE_WINDOW_MINUTES = 15
+# Cửa sổ cho phép điểm danh: [start, start + ATTENDANCE_DURATION_MINUTES]
+# Tính từ thời điểm bắt đầu thi, mở cửa sổ X phút.
+ATTENDANCE_DURATION_MINUTES = 30
 
 
 def _check_attendance_window(exam: Dict):
     """Chặn mark/unmark attendance nếu hiện tại nằm ngoài cửa sổ cho phép.
-    Raise HTTPException(400) nếu sai thời gian."""
+    Raise HTTPException(400) nếu sai thời gian.
+
+    Cửa sổ: [start_time, start_time + 30 phút]."""
     import datetime as _dt
     try:
         d = _dt.date.fromisoformat(exam["exam_date"])
         st_str = exam["start_time"]
-        en_str = exam["end_time"]
         st = _dt.time.fromisoformat(st_str if len(st_str) == 8 else st_str + ":00")
-        en = _dt.time.fromisoformat(en_str if len(en_str) == 8 else en_str + ":00")
     except Exception:
         return
     now = _dt.datetime.now()
-    window_start = _dt.datetime.combine(d, st) - _dt.timedelta(minutes=ATTENDANCE_WINDOW_MINUTES)
-    window_end   = _dt.datetime.combine(d, en) + _dt.timedelta(minutes=ATTENDANCE_WINDOW_MINUTES)
+    window_start = _dt.datetime.combine(d, st)
+    window_end   = window_start + _dt.timedelta(minutes=ATTENDANCE_DURATION_MINUTES)
     if now < window_start:
         raise HTTPException(
             400,
-            f"Chưa tới giờ điểm danh. Chỉ được điểm danh từ "
+            f"Chưa tới giờ điểm danh. Bắt đầu lúc "
             f"{window_start.strftime('%H:%M %d/%m/%Y')}",
         )
     if now > window_end:
         raise HTTPException(
             400,
-            f"Đã quá giờ điểm danh (đóng lúc {window_end.strftime('%H:%M %d/%m/%Y')})",
+            f"Đã quá giờ điểm danh (đóng lúc {window_end.strftime('%H:%M %d/%m/%Y')}, "
+            f"mở {ATTENDANCE_DURATION_MINUTES} phút từ giờ bắt đầu)",
         )
 
 
@@ -672,25 +638,60 @@ async def admin_delete_exam(exam_id: int, admin: dict = Depends(_require_admin))
 
 
 @app.post("/api/admin/exams/{exam_id}/attendance/{user_id}")
-async def admin_mark_attendance(exam_id: int, user_id: int,
-                                admin: dict = Depends(_require_admin)):
+async def admin_mark_attendance(
+    exam_id: int,
+    user_id: int,
+    score: Optional[float] = Form(None),
+    photo: Optional[UploadFile] = File(None),
+    admin: dict = Depends(_require_admin),
+):
     """
     Đánh dấu 1 sinh viên có mặt trong lịch thi.
     Chỉ set attended_at lần đầu — các lần gọi lại giữ nguyên mốc cũ.
-    Chỉ được thực hiện trong cửa sổ [start - 15m, end + 15m].
+    Cửa sổ điểm danh: [start_time, start_time + 30 phút].
+
+    Body có thể gửi (multipart/form-data) — đều tuỳ chọn:
+      • score:  Optional[float]      — điểm tự tin của lần nhận diện
+      • photo:  Optional[UploadFile] — ảnh khuôn mặt JPEG, lưu vào DB (LONGBLOB)
     """
     exam = get_exams().get_exam(exam_id)
     if not exam:
         raise HTTPException(404, "Lịch thi không tồn tại")
     _check_attendance_window(exam)
-    result = get_exams().mark_attendance(exam_id, user_id)
+
+    photo_bytes: Optional[bytes] = None
+    if photo is not None:
+        try:
+            photo_bytes = await photo.read()
+            if photo_bytes is not None and len(photo_bytes) == 0:
+                photo_bytes = None
+        except Exception:
+            photo_bytes = None
+
+    result = get_exams().mark_attendance(
+        exam_id, user_id, score=score, photo_bytes=photo_bytes,
+    )
     if result is None:
         raise HTTPException(404, "Sinh viên không có trong lịch thi này")
     return {
         "user_id": user_id,
         "attended_at": result["attended_at"],
         "first_time": result["first_time"],
+        "attendance_score": result.get("attendance_score"),
+        "has_attendance_photo": result.get("has_attendance_photo", False),
     }
+
+
+@app.get("/api/admin/exams/{exam_id}/attendance/{user_id}/photo")
+async def admin_get_attendance_photo(
+    exam_id: int, user_id: int,
+    admin: dict = Depends(_require_admin),
+):
+    """Trả về ảnh JPEG đã chụp lúc điểm danh (nếu có)."""
+    img = get_exams().get_attendance_photo(exam_id, user_id)
+    if img is None:
+        raise HTTPException(404, "Không có ảnh điểm danh")
+    return Response(content=img, media_type="image/jpeg")
 
 
 @app.delete("/api/admin/exams/{exam_id}/attendance/{user_id}")

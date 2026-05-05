@@ -307,10 +307,18 @@ tr:hover td{background:var(--gray-50)}
         <div style="max-height:520px;overflow:auto">
           <table>
             <thead>
-              <tr><th>MSSV</th><th>Họ tên</th><th>Trạng thái</th><th>Thời gian</th><th style="width:120px">Thao tác</th></tr>
+              <tr>
+                <th>MSSV</th>
+                <th>Họ tên</th>
+                <th>Trạng thái</th>
+                <th>Thời gian</th>
+                <th style="width:90px">Confidence</th>
+                <th style="width:70px">Ảnh</th>
+                <th style="width:120px">Thao tác</th>
+              </tr>
             </thead>
             <tbody id="att-tbody">
-              <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">—</td></tr>
+              <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">—</td></tr>
             </tbody>
           </table>
         </div>
@@ -1118,6 +1126,13 @@ let attDevice=''
 let attState={faces:[],bottomText:'',match:null}
 let attStarting=false
 let currentExam=null          // {id, subject, students:[...]}
+// Buffer score (cosine tương đồng vector từ Qdrant) trong N frame liên tiếp
+// trước khi quyết định mark. Score lưu vào DB là trung bình của buffer.
+const ATT_FRAMES_TO_MARK=3
+const ATT_BUFFER_RESET_MISS=5
+const ATT_LATE_GRACE_MIN=30   // 30 phút đầu tính từ start_time chưa coi là muộn
+let attScoreBuf=new Map()     // uid → number[] (cosine scores gần nhất)
+let attMissCount=new Map()    // uid → số frame liên tiếp không thấy match
 let attendanceById=new Map()  // user_id → {attended_at, ...student}
 let markInflight=new Set()    // user_id đang chờ POST attendance
 let attPollTimer=null         // setInterval id để đồng bộ với server
@@ -1187,6 +1202,8 @@ async function loadAttendanceExam(idArg){
     if(!r.ok){ alert(data.detail||'Không tải được lịch thi'); return }
     currentExam=data
     attendanceById=new Map()
+    attScoreBuf=new Map()
+    attMissCount=new Map()
     ;(data.students||[]).forEach(s=>attendanceById.set(s.id,s))
     document.getElementById('att-layout').style.display='grid'
     document.getElementById('att-info-title').textContent=
@@ -1212,7 +1229,7 @@ function renderAttendanceTable(){
   const done=students.filter(s=>s.attended_at).length
   document.getElementById('att-progress').textContent=`Đã điểm danh: ${done}/${students.length}`
   if(!students.length){
-    tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--gray-400)">Chưa có sinh viên</td></tr>'
+    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Chưa có sinh viên</td></tr>'
     return
   }
   tbody.innerHTML=students.map(s=>{
@@ -1221,8 +1238,8 @@ function renderAttendanceTable(){
     if(ok){
       const late=_attLateMinutes(s)
       if(late===null) statusHtml='<span class="badge badge-yes">✓ Có mặt</span>'
-      else if(late<=0) statusHtml='<span class="badge badge-yes" title="Điểm danh trước/đúng giờ bắt đầu">✓ Đúng giờ</span>'
-      else statusHtml=`<span class="badge badge-yes" style="background:var(--warning-light);color:#92400E" title="Điểm danh sau giờ bắt đầu">✓ Muộn ${late}\u2032</span>`
+      else if(late<=ATT_LATE_GRACE_MIN) statusHtml=`<span class="badge badge-yes" title="Trong ${ATT_LATE_GRACE_MIN} phút đầu — coi là đúng giờ">✓ Đúng giờ</span>`
+      else statusHtml=`<span class="badge badge-yes" style="background:var(--warning-light);color:#92400E" title="Điểm danh sau ${ATT_LATE_GRACE_MIN} phút đầu">✓ Muộn ${late-ATT_LATE_GRACE_MIN}\u2032</span>`
     }else{
       statusHtml='<span class="badge badge-no">Chưa</span>'
     }
@@ -1230,14 +1247,61 @@ function renderAttendanceTable(){
     const actionHtml=ok
       ? `<button class="btn-att-act undo" title="Huỷ điểm danh" onclick="manualUnmarkAttendance(${s.id})">↺ Huỷ</button>`
       : `<button class="btn-att-act mark" title="Đánh dấu có mặt thủ công" onclick="manualMarkAttendance(${s.id})">✓ Có mặt</button>`
+    let scoreHtml='—'
+    if(ok && s.attendance_score!=null && !isNaN(s.attendance_score)){
+      const sc=Number(s.attendance_score)
+      const cls = sc>=0.85 ? 'badge-yes' : (sc>=0.7 ? 'badge-user' : 'badge-no')
+      scoreHtml=`<span class="badge ${cls}" title="Cosine score lúc nhận diện">${sc.toFixed(3)}</span>`
+    }
+    let photoHtml='—'
+    if(ok && s.has_attendance_photo){
+      photoHtml=`<button class="btn-att-act mark" title="Xem ảnh điểm danh" onclick="viewAttendancePhoto(${s.id})">📷 Xem</button>`
+    }
     return `<tr${ok?' style="background:var(--success-light)"':''}>
       <td><strong>${escapeHtml(s.student_id||'—')}</strong></td>
       <td>${escapeHtml(s.full_name||s.username||'—')}${faceWarn}</td>
       <td>${statusHtml}</td>
       <td style="font-family:monospace;font-size:.8rem">${escapeHtml(s.attended_at||'—')}</td>
+      <td>${scoreHtml}</td>
+      <td>${photoHtml}</td>
       <td>${actionHtml}</td>
     </tr>`
   }).join('')
+}
+
+async function viewAttendancePhoto(uid){
+  if(!currentExam) return
+  try{
+    const r=await fetch(`/api/admin/exams/${currentExam.id}/attendance/${uid}/photo`,{
+      headers:{'Authorization':'Bearer '+token}
+    })
+    if(!r.ok){ alert('Không tải được ảnh'); return }
+    const blob=await r.blob()
+    const url=URL.createObjectURL(blob)
+    showAttPhotoModal(url, attendanceById.get(uid))
+  }catch(_){ alert('Lỗi kết nối') }
+}
+
+function showAttPhotoModal(url, stu){
+  let ov=document.getElementById('att-photo-modal')
+  if(!ov){
+    ov=document.createElement('div')
+    ov.id='att-photo-modal'
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:1rem'
+    ov.addEventListener('click',e=>{ if(e.target===ov){ const i=ov.querySelector('img'); if(i&&i.src.startsWith('blob:'))URL.revokeObjectURL(i.src); ov.remove() } })
+    document.body.appendChild(ov)
+  }
+  ov.innerHTML=`
+    <div style="background:var(--white);border-radius:var(--radius);max-width:520px;width:100%;padding:1rem;box-shadow:var(--shadow-lg)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <strong>Ảnh điểm danh — ${escapeHtml(stu?(stu.full_name||stu.username||''):'')}</strong>
+        <button class="btn-att-act undo" onclick="document.getElementById('att-photo-modal').remove()">✕</button>
+      </div>
+      <div style="font-size:.8rem;color:var(--gray-500);margin-bottom:.5rem">
+        ${escapeHtml(stu?stu.attended_at||'':'')}${stu&&stu.attendance_score!=null?' · score '+Number(stu.attendance_score).toFixed(3):''}
+      </div>
+      <img src="${url}" style="max-width:100%;border-radius:8px;display:block">
+    </div>`
 }
 
 async function manualMarkAttendance(uid){
@@ -1246,12 +1310,19 @@ async function manualMarkAttendance(uid){
   markInflight.add(uid)
   try{
     const r=await fetch(`/api/admin/exams/${currentExam.id}/attendance/${uid}`,{
-      method:'POST', headers:{'Authorization':'Bearer '+token}
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token},
+      body: new FormData()  // multipart rỗng — manual mark không có ảnh/score
     })
     const d=await r.json().catch(()=>({}))
     if(!r.ok){ alert(d.detail||'Không đánh dấu được'); return }
     const s=attendanceById.get(uid)
-    if(s){ s.attended_at=d.attended_at; attendanceById.set(uid,s); renderAttendanceTable() }
+    if(s){
+      s.attended_at=d.attended_at
+      s.attendance_score=null
+      s.has_attendance_photo=false
+      attendanceById.set(uid,s); renderAttendanceTable()
+    }
   }finally{ markInflight.delete(uid) }
 }
 
@@ -1266,7 +1337,12 @@ async function manualUnmarkAttendance(uid){
     })
     const d=await r.json().catch(()=>({}))
     if(!r.ok){ alert(d.detail||'Không huỷ được'); return }
-    if(s){ s.attended_at=null; attendanceById.set(uid,s); renderAttendanceTable() }
+    if(s){
+      s.attended_at=null
+      s.attendance_score=null
+      s.has_attendance_photo=false
+      attendanceById.set(uid,s); renderAttendanceTable()
+    }
   }catch(_){ alert('Lỗi kết nối') }
 }
 
@@ -1307,6 +1383,7 @@ function stopAttendance(){
   if(bs) bs.style.display='inline-flex'
   if(be) be.style.display='none'
   const h=document.getElementById('att-hint'); if(h) h.textContent='Chọn lịch → bật camera.'
+  attScoreBuf=new Map(); attMissCount=new Map()
 }
 
 async function fetchAttDevice(){
@@ -1374,19 +1451,53 @@ async function tickAttFrame(){
     }
     attLastProcAt=now
 
-    // Ghi điểm danh cho những face match + thuộc lịch + chưa điểm danh
+    // Ghi điểm danh cho những face match + thuộc lịch + chưa điểm danh.
+    // Tích luỹ cosine score qua nhiều frame, chỉ mark khi đủ ATT_FRAMES_TO_MARK
+    // frame liên tiếp khớp ⇒ score lưu vào DB là TRUNG BÌNH của các frame đó.
     if(currentExam){
-      faces.forEach(f=>{
-        if(!(f.match&&f.user)) return
-        // map: tìm sinh viên trong lịch theo student_id (ưu tiên) hoặc full_name (fallback)
+      const seenUids=new Set()
+      const examId=currentExam.id
+      for(const f of faces){
+        if(!(f.match&&f.user)) continue
         const uid=findStudentIdFromFace(f.user)
-        if(uid==null) return
+        if(uid==null) continue
         const stu=attendanceById.get(uid)
-        if(!stu||stu.attended_at) return
-        if(markInflight.has(uid)) return
-        markInflight.add(uid)
-        markAttendanceOnServer(currentExam.id,uid).finally(()=>markInflight.delete(uid))
-      })
+        if(!stu||stu.attended_at) continue
+        if(markInflight.has(uid)) continue
+        const sc=Number(f.score)
+        if(isNaN(sc)) continue
+        seenUids.add(uid)
+
+        let buf=attScoreBuf.get(uid)
+        if(!buf){ buf=[]; attScoreBuf.set(uid,buf) }
+        buf.push(sc)
+        if(buf.length>ATT_FRAMES_TO_MARK) buf.shift()
+        attMissCount.set(uid,0)
+
+        if(buf.length>=ATT_FRAMES_TO_MARK){
+          const avg=buf.reduce((a,b)=>a+b,0)/buf.length
+          markInflight.add(uid)
+          let photoBlob=null
+          try{ photoBlob=await cropFaceJpeg(video, f.bbox) }catch(_){}
+          markAttendanceOnServer(examId, uid, avg, photoBlob)
+            .finally(()=>{
+              markInflight.delete(uid)
+              attScoreBuf.delete(uid)
+              attMissCount.delete(uid)
+            })
+        }
+      }
+      // Decay/reset buffer cho những uid không thấy match trong frame này
+      for(const uid of Array.from(attScoreBuf.keys())){
+        if(seenUids.has(uid)) continue
+        const m=(attMissCount.get(uid)||0)+1
+        if(m>=ATT_BUFFER_RESET_MISS){
+          attScoreBuf.delete(uid)
+          attMissCount.delete(uid)
+        }else{
+          attMissCount.set(uid,m)
+        }
+      }
     }
   }catch(e){
     clearTimeout(to)
@@ -1409,15 +1520,47 @@ function findStudentIdFromFace(u){
   return null
 }
 
-async function markAttendanceOnServer(examId,userId){
+async function cropFaceJpeg(video, bbox, padFrac=0.25, jpgQ=0.9){
+  if(!video||!video.videoWidth||!Array.isArray(bbox)||bbox.length<4) return null
+  const vw=video.videoWidth, vh=video.videoHeight
+  const x1=Number(bbox[0]), y1=Number(bbox[1]), x2=Number(bbox[2]), y2=Number(bbox[3])
+  const w=x2-x1, h=y2-y1
+  if(!(w>0 && h>0)) return null
+  const padW=w*padFrac, padH=h*padFrac
+  const cx1=Math.max(0, Math.floor(x1-padW))
+  const cy1=Math.max(0, Math.floor(y1-padH))
+  const cx2=Math.min(vw, Math.ceil(x2+padW))
+  const cy2=Math.min(vh, Math.ceil(y2+padH))
+  const cw=cx2-cx1, ch=cy2-cy1
+  if(cw<=0||ch<=0) return null
+  const c=document.createElement('canvas')
+  c.width=cw; c.height=ch
+  c.getContext('2d').drawImage(video, cx1, cy1, cw, ch, 0, 0, cw, ch)
+  return await new Promise(res=>{
+    try{ c.toBlob(b=>res(b||null), 'image/jpeg', jpgQ) }catch(_){ res(null) }
+  })
+}
+
+async function markAttendanceOnServer(examId,userId,score,photoBlob){
   try{
+    const fd=new FormData()
+    if(score!=null && !isNaN(score)) fd.append('score', String(score))
+    if(photoBlob) fd.append('photo', photoBlob, 'attendance.jpg')
     const r=await fetch(`/api/admin/exams/${examId}/attendance/${userId}`,{
-      method:'POST',headers:{'Authorization':'Bearer '+token}
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token},
+      body: fd
     })
-    const d=await r.json()
+    const d=await r.json().catch(()=>({}))
     if(r.ok){
       const s=attendanceById.get(userId)
-      if(s){ s.attended_at=d.attended_at; attendanceById.set(userId,s); renderAttendanceTable() }
+      if(s){
+        s.attended_at=d.attended_at
+        if(d.attendance_score!=null) s.attendance_score=d.attendance_score
+        if(d.has_attendance_photo) s.has_attendance_photo=true
+        attendanceById.set(userId,s)
+        renderAttendanceTable()
+      }
     }
   }catch(_){}
 }

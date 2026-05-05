@@ -205,8 +205,8 @@ USE face_verification;
 
 ### 8.1. Người dùng (User)
 
-1. `/register` → tạo tài khoản sinh viên.
-2. `/login` → đăng nhập, hệ thống chuyển tới `/user`.
+1. `/login` → đăng nhập (tài khoản do **admin cấp**, không có self-registration).
+2. Sau đăng nhập, hệ thống chuyển tới `/user`.
 3. Trong dashboard → **Đăng ký khuôn mặt** → quay 5 góc: `FRONT → LEFT → RIGHT → UP → DOWN`. Mỗi góc thành công sẽ có toast + dấu tích ✅.
 4. Sau khi đủ 5 góc, embedding được đẩy lên Qdrant và tài khoản được đánh dấu `face_registered = true`.
 
@@ -242,7 +242,7 @@ USE face_verification;
 │   └── anti_spoofing/         # Weights MiniFASNet (.pth)
 ├── templates/                 # Jinja2 HTML
 │   ├── index.html
-│   ├── login.html, register.html
+│   ├── login.html
 │   ├── admin.html
 │   ├── user_dashboard.html
 │   └── face_register.html
@@ -258,7 +258,6 @@ USE face_verification;
 
 | Method | Endpoint                              | Yêu cầu | Mô tả                                     |
 | ------ | ------------------------------------- | ------- | ----------------------------------------- |
-| POST   | `/api/register`                       | -       | Đăng ký tài khoản user                    |
 | POST   | `/api/login`                          | -       | Đăng nhập, trả JWT                        |
 | GET    | `/api/me`                             | JWT     | Thông tin user hiện tại                   |
 | GET    | `/api/admin/users`                    | Admin   | Danh sách **user** (lọc bỏ admin)         |

@@ -227,6 +227,9 @@ function examStateOf(e){
   }catch(_){ return 'upcoming' }
 }
 
+// 30 phút đầu kể từ start_time chưa tính là muộn
+const ATT_LATE_GRACE_MIN=30
+
 function lateMinutes(e){
   if(!e.attended_at) return null
   try{
@@ -272,10 +275,10 @@ function renderExams(){
     let statusHtml
     if(e.attended_at){
       const late=lateMinutes(e)
-      if(late!==null && late>0)
-        statusHtml=`<span class="exam-status att late" title="${escapeHtml(e.attended_at)}">⏱ Muộn ${late} phút</span>`
+      if(late!==null && late>ATT_LATE_GRACE_MIN)
+        statusHtml=`<span class="exam-status att late" title="${escapeHtml(e.attended_at)}">⏱ Muộn ${late-ATT_LATE_GRACE_MIN} phút</span>`
       else
-        statusHtml=`<span class="exam-status att" title="${escapeHtml(e.attended_at)}">✓ Đã điểm danh</span>`
+        statusHtml=`<span class="exam-status att" title="${escapeHtml(e.attended_at)} — trong ${ATT_LATE_GRACE_MIN} phút đầu coi là đúng giờ">✓ Đã điểm danh</span>`
     }else if(state==='finished'){
       statusHtml='<span class="exam-status miss">✗ Vắng</span>'
     }else if(state==='ongoing'){

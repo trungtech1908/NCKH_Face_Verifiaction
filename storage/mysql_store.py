@@ -69,13 +69,15 @@ def init_database():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
 
-    # Sinh viên trong mỗi lịch thi + mốc điểm danh
+    # Sinh viên trong mỗi lịch thi + mốc điểm danh + ảnh + điểm tự tin
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS exam_students (
             id INT AUTO_INCREMENT PRIMARY KEY,
             exam_id INT NOT NULL,
             user_id INT NOT NULL,
             attended_at DATETIME NULL,
+            attendance_score FLOAT NULL,
+            attendance_photo LONGBLOB NULL,
             UNIQUE KEY uniq_exam_user (exam_id, user_id),
             INDEX idx_exam (exam_id),
             INDEX idx_user (user_id),
@@ -84,6 +86,31 @@ def init_database():
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
     conn.commit()
+
+    # Migration: bảng cũ (đã tạo trước khi có 2 cột này) → ALTER TABLE bổ sung.
+    cursor.execute("""
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_students'
+    """)
+    existing_cols = {row[0] for row in cursor.fetchall()}
+    if "attendance_score" not in existing_cols:
+        try:
+            cursor.execute(
+                "ALTER TABLE exam_students ADD COLUMN attendance_score FLOAT NULL AFTER attended_at"
+            )
+            conn.commit()
+            logger.info("Added column exam_students.attendance_score")
+        except Error as e:
+            logger.warning("Could not add attendance_score column: %s", e)
+    if "attendance_photo" not in existing_cols:
+        try:
+            cursor.execute(
+                "ALTER TABLE exam_students ADD COLUMN attendance_photo LONGBLOB NULL"
+            )
+            conn.commit()
+            logger.info("Added column exam_students.attendance_photo")
+        except Error as e:
+            logger.warning("Could not add attendance_photo column: %s", e)
 
     # Seed admin mặc định
     cursor.execute("SELECT id FROM users WHERE username = 'admin'")
@@ -352,7 +379,8 @@ class ExamStore:
         }
         cursor.execute("""
             SELECT u.id, u.username, u.full_name, u.student_id, u.face_registered,
-                   es.attended_at
+                   es.attended_at, es.attendance_score,
+                   (es.attendance_photo IS NOT NULL) AS has_photo
             FROM exam_students es
             JOIN users u ON u.id = es.user_id
             WHERE es.exam_id = %s
@@ -367,6 +395,8 @@ class ExamStore:
                 "student_id": r[3] or "",
                 "face_registered": bool(r[4]),
                 "attended_at": _fmt_dt(r[5]),
+                "attendance_score": float(r[6]) if r[6] is not None else None,
+                "has_attendance_photo": bool(r[7]),
             })
         exam["students"] = students
         exam["total_students"] = len(students)
@@ -530,7 +560,7 @@ class ExamStore:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT e.id, e.subject, e.exam_date, e.start_time, e.end_time,
-                       e.room, e.note, es.attended_at
+                       e.room, e.note, es.attended_at, es.attendance_score
                 FROM exam_students es
                 JOIN exams e ON e.id = es.exam_id
                 WHERE es.user_id = %s
@@ -550,6 +580,7 @@ class ExamStore:
                     "room": r[5] or "",
                     "note": r[6] or "",
                     "attended_at": _fmt_dt(r[7]),
+                    "attendance_score": float(r[8]) if r[8] is not None else None,
                 })
             return out
         except Error as e:
@@ -557,12 +588,14 @@ class ExamStore:
             return []
 
     def unmark_attendance(self, exam_id: int, user_id: int) -> bool:
-        """Huỷ điểm danh (reset attended_at = NULL). True nếu có thay đổi."""
+        """Huỷ điểm danh: xoá attended_at, attendance_score và attendance_photo.
+        Trả True nếu có ít nhất một bản ghi bị thay đổi."""
         try:
             conn = _get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE exam_students SET attended_at = NULL "
+                "UPDATE exam_students "
+                "SET attended_at = NULL, attendance_score = NULL, attendance_photo = NULL "
                 "WHERE exam_id = %s AND user_id = %s",
                 (exam_id, user_id),
             )
@@ -575,18 +608,31 @@ class ExamStore:
             logger.error("unmark_attendance error: %s", e)
             return False
 
-    def mark_attendance(self, exam_id: int, user_id: int) -> Optional[Dict]:
+    def mark_attendance(
+        self,
+        exam_id: int,
+        user_id: int,
+        score: Optional[float] = None,
+        photo_bytes: Optional[bytes] = None,
+    ) -> Optional[Dict]:
         """
         Đánh dấu user_id có mặt ở exam_id. Chỉ set attended_at lần đầu
         (các lần sau không overwrite → giữ mốc xuất hiện đầu tiên).
-        Trả {attended_at, first_time} hoặc None nếu sinh viên không thuộc lịch.
+
+        Khi `first_time=True` và caller có truyền `score`/`photo_bytes`, hai
+        giá trị này cũng được lưu kèm. Khi mark thủ công không có ảnh thì cả
+        2 trường vẫn NULL.
+
+        Trả {attended_at, first_time, attendance_score, has_attendance_photo}
+        hoặc None nếu sinh viên không thuộc lịch.
         """
         try:
             conn = _get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, attended_at FROM exam_students "
-                "WHERE exam_id = %s AND user_id = %s",
+                "SELECT id, attended_at, attendance_score, "
+                "(attendance_photo IS NOT NULL) "
+                "FROM exam_students WHERE exam_id = %s AND user_id = %s",
                 (exam_id, user_id),
             )
             row = cursor.fetchone()
@@ -594,19 +640,57 @@ class ExamStore:
                 cursor.close()
                 conn.close()
                 return None
-            es_id, attended_at = row
+            es_id, attended_at, cur_score, cur_has_photo = row
             first_time = attended_at is None
             if first_time:
                 cursor.execute(
-                    "UPDATE exam_students SET attended_at = NOW() WHERE id = %s",
-                    (es_id,),
+                    "UPDATE exam_students "
+                    "SET attended_at = NOW(), "
+                    "    attendance_score = %s, "
+                    "    attendance_photo = %s "
+                    "WHERE id = %s",
+                    (
+                        float(score) if score is not None else None,
+                        photo_bytes if photo_bytes else None,
+                        es_id,
+                    ),
                 )
                 conn.commit()
-                cursor.execute("SELECT attended_at FROM exam_students WHERE id = %s", (es_id,))
-                attended_at = cursor.fetchone()[0]
+                cursor.execute(
+                    "SELECT attended_at, attendance_score, "
+                    "(attendance_photo IS NOT NULL) "
+                    "FROM exam_students WHERE id = %s",
+                    (es_id,),
+                )
+                attended_at, cur_score, cur_has_photo = cursor.fetchone()
             cursor.close()
             conn.close()
-            return {"attended_at": _fmt_dt(attended_at), "first_time": first_time}
+            return {
+                "attended_at": _fmt_dt(attended_at),
+                "first_time": first_time,
+                "attendance_score": float(cur_score) if cur_score is not None else None,
+                "has_attendance_photo": bool(cur_has_photo),
+            }
         except Error as e:
             logger.error("mark_attendance error: %s", e)
+            return None
+
+    def get_attendance_photo(self, exam_id: int, user_id: int) -> Optional[bytes]:
+        """Trả bytes JPEG của ảnh điểm danh (nếu có), hoặc None."""
+        try:
+            conn = _get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT attendance_photo FROM exam_students "
+                "WHERE exam_id = %s AND user_id = %s",
+                (exam_id, user_id),
+            )
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if not row or row[0] is None:
+                return None
+            return bytes(row[0])
+        except Error as e:
+            logger.error("get_attendance_photo error: %s", e)
             return None
