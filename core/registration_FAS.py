@@ -51,8 +51,10 @@ STEP_DIR = {
 
 STEP_MSG = {
     Step.FRONT: "Nhìn thẳng vào camera",
-    Step.LEFT:  "Quay mặt sang TRÁI",
-    Step.RIGHT: "Quay mặt sang PHẢI",
+    # Camera bị mirror so với người dùng → đổi label hiển thị (giữ nguyên
+    # key LEFT/RIGHT cho toán học yaw bên trong).
+    Step.LEFT:  "Quay mặt sang PHẢI",
+    Step.RIGHT: "Quay mặt sang TRÁI",
     Step.UP:    "Ngẩng mặt lên TRÊN",
     Step.DOWN:  "Cúi mặt xuống DƯỚI",
     Step.DONE:  "Đăng ký hoàn tất!",
@@ -363,8 +365,8 @@ class FaceRegistrationSession:
     @staticmethod
     def _hint(pose, req: str) -> str:
         hints = {
-            "LEFT":  f"Quay mặt sang TRÁI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
-            "RIGHT": f"Quay mặt sang PHẢI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
+            "LEFT":  f"Quay mặt sang PHẢI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
+            "RIGHT": f"Quay mặt sang TRÁI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
             "UP":    f"Ngẩng đầu lên cao hơn (Pitch: {pose.pitch:+.1f}°)",
             "DOWN":  f"Cúi đầu xuống thấp hơn (Pitch: {pose.pitch:+.1f}°)",
             "FRONT": "Nhìn thẳng vào camera",
