@@ -1623,8 +1623,16 @@ function attDrawLoop(){
       const bw=x2-x1,bh=y2-y1
       const bboxOk=bw>0&&bh>0&&isFinite(bw)&&isFinite(bh)&&isFinite(x1)&&isFinite(y1)
       if(!bboxOk) continue
+      // 3 trường hợp:
+      //  • match=true + thuộc lịch thi          → viền XANH
+      //  • match=true + KHÔNG thuộc lịch thi    → viền VÀNG (có trong DB
+      //    nhưng không nằm trong danh sách lịch thi đang chọn)
+      //  • match=false                          → viền ĐỎ
+      const inExam = (f.match===true && f.user)
+        ? (findStudentIdFromFace(f.user) != null)
+        : false
       let stroke='#FFCC00'
-      if(f.match===true) stroke='#00FF00'
+      if(f.match===true) stroke = inExam ? '#00FF00' : '#FFCC00'
       else if(f.match===false) stroke='#FF4444'
       ctx.strokeStyle=stroke
       ctx.lineWidth=Math.max(2,Math.round(2*scale))
@@ -1636,8 +1644,15 @@ function attDrawLoop(){
         const line1=sc?`${n}  (${sc})`:n
         const line2='MSV: '+(f.user.student_id!=null?String(f.user.student_id):'—')
         const lines=[line1,line2]
-        const fonts=[`bold ${fsN}px sans-serif`,`${fsM}px sans-serif`]
-        const colors=['#00FF00','#CCFFCC']
+        if(!inExam) lines.push('⚠ Không có trong lịch thi')
+        const fonts=[
+          `bold ${fsN}px sans-serif`,
+          `${fsM}px sans-serif`,
+          `bold ${fsM}px sans-serif`,
+        ]
+        const mainColor = inExam ? '#00FF00' : '#FFCC00'
+        const subColor  = inExam ? '#CCFFCC' : '#FFE9A8'
+        const colors=[mainColor, subColor, '#FFCC00']
         let blockH=0
         for(let i=0;i<lines.length;i++){
           ctx.font=fonts[i]
