@@ -25,6 +25,26 @@ COLLECTION_NAME = "NCKH_Face_Verification"
 app = FaceAnalysis(name="buffalo_l", allowed_modules=['detection', 'recognition'], providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 app.prepare(ctx_id=0)
 
+# ===== Hiển thị đang chạy CPU hay GPU =====
+def _infer_runtime_device(face_app) -> str:
+    """
+    Best-effort: đọc providers thực tế từ onnxruntime session bên trong insightface.
+    """
+    try:
+        models = getattr(face_app, "models", None)
+        if isinstance(models, dict) and models:
+            for m in models.values():
+                sess = getattr(m, "session", None)
+                if sess is not None and hasattr(sess, "get_providers"):
+                    providers = sess.get_providers()
+                    return "GPU (CUDA)" if any("CUDA" in p for p in providers) else "CPU"
+    except Exception:
+        pass
+    return "Unknown"
+
+device_label = _infer_runtime_device(app)
+print(f"[InsightFace] Runtime device: {device_label}")
+
 # ================== CAMERA ==================
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():

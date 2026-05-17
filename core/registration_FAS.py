@@ -51,8 +51,10 @@ STEP_DIR = {
 
 STEP_MSG = {
     Step.FRONT: "Nhìn thẳng vào camera",
-    Step.LEFT:  "Quay mặt sang TRÁI",
-    Step.RIGHT: "Quay mặt sang PHẢI",
+    # Camera bị mirror so với người dùng → đổi label hiển thị (giữ nguyên
+    # key LEFT/RIGHT cho toán học yaw bên trong).
+    Step.LEFT:  "Quay mặt sang PHẢI",
+    Step.RIGHT: "Quay mặt sang TRÁI",
     Step.UP:    "Ngẩng mặt lên TRÊN",
     Step.DOWN:  "Cúi mặt xuống DƯỚI",
     Step.DONE:  "Đăng ký hoàn tất!",
@@ -124,7 +126,11 @@ class AntiSpoof:
             return label.item(), score.item()
 
 class FaceRegistrationSession:
-    def __init__(self, user_id: str, hold_seconds: float = 1.5, frames_per_step: int = 5, step_timeout: float = 30.0):
+    def __init__(self, user_id: str, hold_seconds: float = 1.5, frames_per_step: int = 5,
+                 step_timeout: float = 30.0, face_app=None):
+        """face_app: an insightface.app.FaceAnalysis instance (recommended to reuse the same app).
+        If not provided, a local FaceAnalysis will be created as a fallback.
+        """
         from core.head_pose import HeadPoseEstimator
         from core.embedding import FaceEmbedder
 
@@ -133,8 +139,19 @@ class FaceRegistrationSession:
         self.frames_per_step = frames_per_step
         self.step_timeout = step_timeout
 
-        self._estimator = HeadPoseEstimator()
-        self._embedder = FaceEmbedder()  # 🔥 thêm embedder
+        # InsightFace app (detection + recognition) — passed in to keep detection consistent
+        if face_app is None:
+            try:
+                from insightface.app import FaceAnalysis
+                face_app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+                face_app.prepare(ctx_id=0)
+            except Exception:
+                face_app = None
+        self._face_app = face_app
+
+        # Head pose estimator and embedder
+        self._estimator = HeadPoseEstimator(face_app=self._face_app)
+        self._embedder = FaceEmbedder()
 
         self._result = RegistrationResult(user_id=user_id)
         self._idx = 0
@@ -142,11 +159,11 @@ class FaceRegistrationSession:
 
         # Anti-spoof buffers
         import config
+        # store tuples (label, score) to allow checking label + score consistency
         self._fas_scores = deque(maxlen=config.ANTI_SPOOF_CONSISTENT_FRAMES)
-        self._fas_prev_crop = None
-        self._fas_static_count = 0
+        # static-check đã bỏ để tránh false-positive "ảnh tĩnh"
 
-        self.reference_embedding = None  # 🔥 embedding chuẩn (FRONT)
+        self.reference_embedding = None
 
         self._reset_state()
 
@@ -171,58 +188,92 @@ class FaceRegistrationSession:
         if self.is_done():
             return self._ev("done", "Đăng ký hoàn tất!")
 
-        pose = self._estimator.estimate(frame_bgr)
         prog = self.get_progress()
+
+        # Use InsightFace detection to get consistent bbox/landmarks
+        faces = None
+        if self._face_app is not None:
+            try:
+                faces = self._face_app.get(frame_bgr)
+            except Exception:
+                faces = None
+
+        if not faces:
+            # Fallback: estimator tự gọi InsightFace lazily nếu được, dù
+            # thực tế face_app gần như luôn có sẵn ở đây.
+            pose = self._estimator.estimate(frame_bgr)
+            if pose is None:
+                return self._ev("no_face", "Không thấy khuôn mặt", progress=prog)
+            face_bbox = pose.bbox
+            best_face = None
+        else:
+            # prefer the best-scored face from InsightFace
+            face = max(faces, key=lambda f: getattr(f, 'det_score', 0.0))
+            face_bbox = face.bbox
+            best_face = face
+
+        # Occlusion check (mask / sunglasses) — từ chối nếu bị che
+        if best_face is not None:
+            try:
+                from core.occlusion import detect_occlusion, describe_reasons
+                occ, reasons, _m = detect_occlusion(frame_bgr, best_face)
+                if occ:
+                    self._hold_start = None
+                    return self._ev(
+                        "occluded",
+                        describe_reasons(reasons) + " — bỏ khẩu trang/kính và thử lại",
+                        progress=prog,
+                    )
+            except Exception:
+                pass
+
+        if time.time() - self._step_start > self.step_timeout:
+            self._reset_step()
+            return self._ev("timeout", "Hết giờ", progress=self.get_progress())
+
+        # Head-pose: dùng trực tiếp 5 landmark mà InsightFace đã trả ở best_face,
+        # không phải detect lại bằng model phụ.
+        try:
+            if best_face is not None:
+                pose = self._estimator.estimate(best_face)
+            else:
+                pose = self._estimator.estimate(frame_bgr)
+            if pose is not None:
+                pose.bbox = list(face_bbox)
+        except Exception:
+            pose = None
 
         if pose is None:
             return self._ev("no_face", "Không thấy khuôn mặt", progress=prog)
 
-        if time.time() - self._step_start > self.step_timeout:
-            self._reset_step()
-            return self._ev("timeout", "Hết giờ", pose=pose, progress=self.get_progress())
-
         req = STEP_DIR[self.current_step]
-
         if not DIRECTION_ANGLES[req].matches(pose):
             self._hold_start = None
             return self._ev("waiting", self._hint(pose, req), pose=pose, progress=prog)
 
-        # 🔥 Anti spoof (temporal + static checks)
-        i27 = get_crop_face(frame_bgr, box=pose.bbox, scale=2.7)
-        i40 = get_crop_face(frame_bgr, box=pose.bbox, scale=4.0)
+        # Anti spoof (giống test_va_crop_face.py):
+        # - Không dùng static-check (dễ false-positive "ảnh tĩnh")
+        # - Dùng label==1 và score >= threshold trong vài frame liên tiếp
+        i27 = get_crop_face(frame_bgr, box=face_bbox, scale=2.7)
+        i40 = get_crop_face(frame_bgr, box=face_bbox, scale=4.0)
         label, score = self._fas.predict(i27, i40)
 
-        # Update score history
-        self._fas_scores.append(score)
+        # lưu score để kiểm tra theo thời gian
+        self._fas_scores.append(score if label == 1 else 0.0)
 
-        # Static (printed photo) detection: compare current crop with previous
-        try:
-            if self._fas_prev_crop is not None:
-                prev = cv2.resize(self._fas_prev_crop, (80, 80))
-                cur = cv2.resize(i40, (80, 80))
-                mean_diff = float(np.mean(np.abs(prev.astype('int32') - cur.astype('int32'))))
-                if mean_diff < config.ANTI_SPOOF_STATIC_THRESHOLD:
-                    self._fas_static_count += 1
-                else:
-                    self._fas_static_count = 0
-            self._fas_prev_crop = i40.copy()
-        except Exception:
-            # If any error in static check, conservatively reset counters
-            self._fas_static_count = 0
-            self._fas_prev_crop = i40.copy()
-
-        if self._fas_static_count >= config.ANTI_SPOOF_STATIC_FRAMES:
+        thr = float(getattr(config, "ANTI_SPOOF_SCORE_THRESHOLD", 0.85))
+        needed = int(getattr(config, "ANTI_SPOOF_CONSISTENT_FRAMES", 3))
+        passes = sum(1 for s in self._fas_scores if s >= thr)
+        if passes < needed:
             self._hold_start = None
-            return self._ev("spoof_detected", "Phát hiện gian lận: ảnh tĩnh giống nhau", pose=pose, progress=prog)
+            return self._ev(
+                "spoof_uncertain",
+                f"Đang xác minh liveness... ({passes}/{needed})",
+                pose=pose,
+                progress=prog,
+            )
 
-        # Require several consecutive high-confidence "real" scores before proceeding
-        passes = sum(1 for s in self._fas_scores if s >= config.ANTI_SPOOF_SCORE_THRESHOLD)
-        if passes < config.ANTI_SPOOF_CONSISTENT_FRAMES:
-            # Not yet confident about liveness; do not start hold timer
-            self._hold_start = None
-            return self._ev("spoof_uncertain", f"Chờ xác minh liveness... ({passes}/{config.ANTI_SPOOF_CONSISTENT_FRAMES})", pose=pose, progress=prog)
-
-        # 🔥 Hold logic
+        # Hold logic — current frame is strict real already
         if self._hold_start is None:
             self._hold_start = time.time()
 
@@ -232,49 +283,44 @@ class FaceRegistrationSession:
         if hold < 1.0:
             return self._ev("hold", f"Giữ nguyên... {int(hold*100)}%", pose=pose, progress=prog)
 
-        # 🔥 Capture frame
+        # Capture frame
         cap = self._result.captures.setdefault(req, StepCapture(self.current_step, req))
         cap.frames.append(frame_bgr.copy())
         cap.poses.append(pose)
         self._captured += 1
 
-        # 🔥 ĐỦ FRAME → VERIFY
+        # Enough frames → verify
         if self._captured >= self.frames_per_step:
-
-            # 👉 Extract embedding từ step hiện tại
             emb = self._embedder.extract_best(cap.frames)
-
             if emb is None:
                 self._reset_step()
                 return self._ev("error", "Không nhận diện được khuôn mặt", progress=prog)
 
-            # 🔥 STEP FRONT → LÀM REFERENCE
             if self.current_step == Step.FRONT:
                 self.reference_embedding = emb
                 logger.info("Reference embedding set")
-
             else:
-                # 🔥 VERIFY với FRONT
                 sim = compute_similarity(self.reference_embedding, emb)
                 logger.info(f"Similarity with reference: {sim:.3f}")
-
-                if sim < config.FACE_VERIFICATION_THRESHOLD:
+                if sim < 0.5:
                     self._reset_step()
                     return self._ev(
                         "face_mismatch",
-                        f"Khuôn mặt không khớp (sim={sim:.2f}) - thử lại",
+                        f"Khuôn mặt không khớp với ảnh chính diện (cosine={sim:.3f} < 0.5). Vui lòng đăng ký lại góc này.",
                         progress=prog
                     )
-            # 🔥 PASS → next step
+
             self._idx += 1
             self._reset_state()
             if self.is_done():
                 self._result.completed = True
                 return self._ev("done", "✅ Đăng ký hoàn tất!", progress=self.get_progress())
-            return self._ev("step_done", f"✓ Tiếp theo: {STEP_MSG[self.current_step]}",
-                            progress=self.get_progress())
-        return self._ev("captured", f"{self._captured}/{self.frames_per_step}",
-                        pose=pose, progress=prog)
+            ev = self._ev("step_done", f"✓ Tiếp theo: {STEP_MSG[self.current_step]}", progress=self.get_progress())
+            ev["finished_step"] = STEP_ORDER[self._idx - 1].name
+            ev["finished_direction"] = STEP_DIR[STEP_ORDER[self._idx - 1]]
+            return ev
+
+        return self._ev("captured", f"{self._captured}/{self.frames_per_step}", pose=pose, progress=prog)
 
     def get_result(self): return self._result
 
@@ -285,8 +331,33 @@ class FaceRegistrationSession:
         # Clear anti-spoof buffers for the next attempt
         try:
             self._fas_scores.clear()
-            self._fas_prev_crop = None
-            self._fas_static_count = 0
+        except Exception:
+            pass
+        self._reset_state()
+
+    def redo_direction(self, direction: str):
+        """
+        Xoá capture của direction và quay lại bước đó để đăng ký lại.
+        Được gọi khi phát hiện khuôn mặt trùng DB hoặc không khớp FRONT.
+        """
+        try:
+            direction = str(direction).upper()
+        except Exception:
+            return
+
+        # xóa dữ liệu đã capture cho direction
+        if direction in self._result.captures:
+            del self._result.captures[direction]
+
+        # set current step index về đúng step tương ứng
+        for i, s in enumerate(STEP_ORDER[:-1]):
+            if STEP_DIR.get(s) == direction:
+                self._idx = i
+                break
+
+        # Clear anti-spoof buffers
+        try:
+            self._fas_scores.clear()
         except Exception:
             pass
         self._reset_state()
@@ -294,8 +365,8 @@ class FaceRegistrationSession:
     @staticmethod
     def _hint(pose, req: str) -> str:
         hints = {
-            "LEFT":  f"Quay mặt sang TRÁI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
-            "RIGHT": f"Quay mặt sang PHẢI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
+            "LEFT":  f"Quay mặt sang PHẢI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
+            "RIGHT": f"Quay mặt sang TRÁI hơn nữa (Yaw: {pose.yaw:+.1f}°)",
             "UP":    f"Ngẩng đầu lên cao hơn (Pitch: {pose.pitch:+.1f}°)",
             "DOWN":  f"Cúi đầu xuống thấp hơn (Pitch: {pose.pitch:+.1f}°)",
             "FRONT": "Nhìn thẳng vào camera",
