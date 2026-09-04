@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trang cá nhân</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --primary:#3B82F6;--primary-dark:#2563EB;--primary-light:#DBEAFE;
+  --success:#10B981;--success-light:#D1FAE5;--danger:#EF4444;
+  --warning:#F59E0B;--warning-light:#FEF3C7;
+  --bg:#F8FAFC;--white:#FFF;
+  --gray-100:#F3F4F6;--gray-200:#E5E7EB;--gray-400:#9CA3AF;
+  --gray-500:#6B7280;--gray-600:#4B5563;--gray-700:#374151;--gray-800:#1F2937;--gray-900:#111827;
+  --font:'Be Vietnam Pro',sans-serif;
+  --shadow:0 1px 3px rgba(0,0,0,.1);--shadow-lg:0 10px 15px rgba(0,0,0,.1);
+  --radius:12px;
+}
+body{background:var(--bg);font-family:var(--font);min-height:100vh}
+
+/* Header */
+.header{background:var(--white);border-bottom:1px solid var(--gray-200);padding:1rem 2rem;
+  display:flex;justify-content:space-between;align-items:center}
+.logo{font-size:1.1rem;font-weight:800;color:var(--gray-900)}
+.logo span{color:var(--primary)}
+.header-right{display:flex;align-items:center;gap:1rem}
+.user-badge{font-size:.85rem;color:var(--gray-600)}
+.user-badge strong{color:var(--gray-900)}
+.btn-logout{font-family:var(--font);font-size:.8rem;font-weight:600;
+  color:var(--danger);background:none;border:1px solid var(--danger);
+  padding:.35rem .75rem;border-radius:8px;cursor:pointer;transition:all .2s}
+.btn-logout:hover{background:#FEE2E2}
+
+/* Content */
+.content{max-width:800px;margin:2rem auto;padding:0 1.5rem}
+.page-title{font-size:1.5rem;font-weight:800;color:var(--gray-900);margin-bottom:.25rem}
+.page-desc{font-size:.85rem;color:var(--gray-500);margin-bottom:2rem}
+
+/* Profile card */
+.profile-card{background:var(--white);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:1.5rem}
+.profile-header{background:linear-gradient(135deg,var(--primary),var(--primary-dark));padding:2rem;color:white;text-align:center}
+.profile-avatar{width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,.2);
+  margin:0 auto .75rem;display:flex;align-items:center;justify-content:center;font-size:2rem}
+.profile-name{font-size:1.3rem;font-weight:700}
+.profile-role{font-size:.8rem;opacity:.8;margin-top:.2rem}
+.profile-body{padding:1.5rem}
+.info-row{display:flex;justify-content:space-between;padding:.75rem 0;border-bottom:1px solid var(--gray-100)}
+.info-row:last-child{border:none}
+.info-label{font-size:.8rem;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em}
+.info-value{font-size:.9rem;font-weight:500;color:var(--gray-800)}
+
+/* Face status card */
+.face-card{background:var(--white);border-radius:16px;box-shadow:var(--shadow);padding:1.5rem;
+  display:flex;align-items:center;gap:1.25rem}
+.face-icon{width:56px;height:56px;border-radius:14px;display:flex;align-items:center;
+  justify-content:center;font-size:1.5rem;flex-shrink:0}
+.face-icon.registered{background:var(--success-light)}
+.face-icon.not-registered{background:var(--warning-light)}
+.face-info{flex:1}
+.face-title{font-weight:700;color:var(--gray-900);margin-bottom:.15rem}
+.face-desc{font-size:.8rem;color:var(--gray-500)}
+.btn{font-family:var(--font);font-size:.85rem;font-weight:600;
+  padding:.6rem 1.25rem;border-radius:var(--radius);border:none;cursor:pointer;
+  display:inline-flex;align-items:center;gap:.4rem;transition:all .2s;text-decoration:none}
+.btn-primary{background:var(--primary);color:white}
+.btn-primary:hover{background:var(--primary-dark)}
+.btn-success{background:var(--success);color:white}
+
+.spinner{display:inline-block;width:14px;height:14px;
+  border:2px solid rgba(59,130,246,.3);border-top-color:var(--primary);
+  border-radius:50%;animation:spin .5s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Exam list */
+.exams-card{background:var(--white);border-radius:16px;box-shadow:var(--shadow);padding:1.5rem;margin-top:1.5rem}
+.exams-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem}
+.exams-title{font-size:1.05rem;font-weight:700;color:var(--gray-900)}
+.exams-tabs{display:flex;gap:.4rem}
+.exam-tab{font-family:var(--font);font-size:.78rem;font-weight:600;color:var(--gray-600);
+  background:var(--gray-100);border:none;padding:.4rem .8rem;border-radius:8px;cursor:pointer;transition:all .15s}
+.exam-tab.active{background:var(--primary);color:#fff}
+.exam-item{display:grid;grid-template-columns:64px 1fr auto;gap:1rem;align-items:center;
+  padding:.85rem;border:1px solid var(--gray-200);border-radius:12px;margin-bottom:.6rem;transition:all .15s}
+.exam-item:hover{border-color:var(--primary-light)}
+.exam-item.upcoming{border-left:4px solid var(--primary)}
+.exam-item.ongoing{border-left:4px solid var(--warning);background:#FFFBEB}
+.exam-item.finished{border-left:4px solid var(--gray-400);opacity:.82}
+.exam-date{text-align:center;background:var(--gray-100);border-radius:10px;padding:.45rem .3rem}
+.exam-date .d{font-size:1.15rem;font-weight:700;color:var(--gray-900);line-height:1.1}
+.exam-date .m{font-size:.65rem;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.06em;margin-top:.1rem}
+.exam-body{min-width:0}
+.exam-subject{font-size:.95rem;font-weight:700;color:var(--gray-900);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.exam-meta{font-size:.78rem;color:var(--gray-500);margin-top:.2rem;display:flex;gap:.8rem;flex-wrap:wrap}
+.exam-meta strong{color:var(--gray-700);font-weight:600}
+.exam-status{display:inline-flex;align-items:center;gap:.25rem;padding:.3rem .6rem;border-radius:999px;
+  font-size:.72rem;font-weight:700;white-space:nowrap}
+.exam-status.att{background:var(--success-light);color:#047857}
+.exam-status.att.late{background:var(--warning-light);color:#92400E}
+.exam-status.miss{background:#FEE2E2;color:#B91C1C}
+.exam-status.pending{background:var(--gray-100);color:var(--gray-600)}
+.exam-empty{text-align:center;color:var(--gray-400);font-size:.85rem;padding:1.5rem}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">🎓 <span>FaceCheck</span></div>
+  <div class="header-right">
+    <div class="user-badge">Xin chào, <strong id="h-name">...</strong></div>
+    <button class="btn-logout" onclick="logout()">Đăng xuất</button>
+  </div>
+</div>
+
+<div class="content">
+  <div class="page-title">Trang cá nhân</div>
+  <div class="page-desc">Xem thông tin tài khoản và trạng thái đăng ký khuôn mặt</div>
+
+  <div class="profile-card">
+    <div class="profile-header">
+      <div class="profile-avatar" id="p-avatar">👤</div>
+      <div class="profile-name" id="p-name"><span class="spinner"></span></div>
+      <div class="profile-role" id="p-role"></div>
+    </div>
+    <div class="profile-body">
+      <div class="info-row"><span class="info-label">Username</span><span class="info-value" id="p-username">—</span></div>
+      <div class="info-row"><span class="info-label">Email</span><span class="info-value" id="p-email">—</span></div>
+      <div class="info-row"><span class="info-label">MSSV</span><span class="info-value" id="p-studentid">—</span></div>
+      <div class="info-row"><span class="info-label">Ngày tạo</span><span class="info-value" id="p-created">—</span></div>
+    </div>
+  </div>
+
+  <div class="face-card" id="face-card">
+    <div class="face-icon not-registered" id="face-icon">📷</div>
+    <div class="face-info">
+      <div class="face-title" id="face-title">Đang tải...</div>
+      <div class="face-desc" id="face-desc"></div>
+    </div>
+    <a class="btn btn-primary" id="face-btn" href="#" style="display:none">Đăng ký ngay</a>
+  </div>
+
+  <div class="exams-card">
+    <div class="exams-head">
+      <div class="exams-title">Lịch thi của bạn</div>
+      <div class="exams-tabs">
+        <button class="exam-tab active" data-filter="upcoming" onclick="setExamFilter('upcoming')">Sắp tới</button>
+        <button class="exam-tab" data-filter="past" onclick="setExamFilter('past')">Đã qua</button>
+        <button class="exam-tab" data-filter="all" onclick="setExamFilter('all')">Tất cả</button>
+      </div>
+    </div>
+    <div id="exams-list"><div class="exam-empty"><span class="spinner"></span></div></div>
+  </div>
+</div>
+
+<script>
+const token = localStorage.getItem('token')
+const cached = JSON.parse(localStorage.getItem('user')||'{}')
+if(!token){ location.href='/login' }
+if(cached.role==='admin'){ location.href='/admin' }
+
+function logout(){ localStorage.clear(); location.href='/' }
+
+async function loadProfile(){
+  try{
+    const res=await fetch('/api/me',{headers:{'Authorization':'Bearer '+token}})
+    if(!res.ok){logout();return}
+    const u=await res.json()
+
+    document.getElementById('h-name').textContent=u.full_name||u.username
+    document.getElementById('p-name').textContent=u.full_name||u.username
+    document.getElementById('p-role').textContent=u.role==='admin'?'Quản trị viên':'Sinh viên'
+    document.getElementById('p-avatar').textContent=u.full_name?u.full_name.charAt(0).toUpperCase():'👤'
+    document.getElementById('p-username').textContent=u.username
+    document.getElementById('p-email').textContent=u.email||'—'
+    document.getElementById('p-studentid').textContent=u.student_id||'—'
+    document.getElementById('p-created').textContent=u.created_at?new Date(u.created_at).toLocaleDateString('vi-VN'):'—'
+
+    const faceIcon=document.getElementById('face-icon')
+    const faceTitle=document.getElementById('face-title')
+    const faceDesc=document.getElementById('face-desc')
+    const faceBtn=document.getElementById('face-btn')
+
+    if(u.face_registered){
+      faceIcon.className='face-icon registered'
+      faceIcon.textContent='✅'
+      faceTitle.textContent='Đã đăng ký khuôn mặt'
+      faceDesc.textContent='Khuôn mặt của bạn đã được đăng ký trong hệ thống. Không thể đăng ký lại.'
+      faceBtn.textContent='Đã hoàn tất'
+      faceBtn.href='#'
+      faceBtn.onclick=function(e){ e.preventDefault() }
+      faceBtn.style.opacity='0.65'
+      faceBtn.style.cursor='default'
+      faceBtn.style.display='inline-flex'
+    }else{
+      faceIcon.className='face-icon not-registered'
+      faceIcon.textContent='📷'
+      faceTitle.textContent='Chưa đăng ký khuôn mặt'
+      faceDesc.textContent='Vui lòng đăng ký khuôn mặt để sử dụng hệ thống điểm danh'
+      faceBtn.textContent='Đăng ký ngay'
+      faceBtn.href=`/face-register?user_id=${u.id}`
+      faceBtn.onclick=null
+      faceBtn.style.opacity=''
+      faceBtn.style.cursor=''
+      faceBtn.style.display='inline-flex'
+    }
+  }catch(e){console.error(e)}
+}
+
+loadProfile()
+
+// ── Lịch thi cá nhân ──
+const MONTH_SHORT=['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12']
+let myExams=[]
+let examFilter='upcoming'
+
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+function examStateOf(e){
+  try{
+    const start=new Date(e.exam_date+'T'+(e.start_time||'00:00:00'))
+    const end  =new Date(e.exam_date+'T'+(e.end_time  ||'00:00:00'))
+    const now=new Date()
+    if(now<start) return 'upcoming'
+    if(now>=start && now<=end) return 'ongoing'
+    return 'finished'
+  }catch(_){ return 'upcoming' }
+}
+
+// 30 phút đầu kể từ start_time chưa tính là muộn
+const ATT_LATE_GRACE_MIN=30
+
+function lateMinutes(e){
+  if(!e.attended_at) return null
+  try{
+    const at=new Date(e.attended_at.replace(' ','T'))
+    const start=new Date(e.exam_date+'T'+(e.start_time||'00:00:00'))
+    return Math.round((at-start)/60000)
+  }catch(_){ return null }
+}
+
+async function loadMyExams(){
+  try{
+    const res=await fetch('/api/me/exams',{headers:{'Authorization':'Bearer '+token}})
+    if(!res.ok){ document.getElementById('exams-list').innerHTML='<div class="exam-empty">Không tải được lịch thi</div>'; return }
+    const data=await res.json()
+    myExams=data.exams||[]
+    renderExams()
+  }catch(_){
+    document.getElementById('exams-list').innerHTML='<div class="exam-empty">Lỗi kết nối</div>'
+  }
+}
+
+function setExamFilter(f){
+  examFilter=f
+  document.querySelectorAll('.exam-tab').forEach(b=>b.classList.toggle('active', b.dataset.filter===f))
+  renderExams()
+}
+
+function renderExams(){
+  const box=document.getElementById('exams-list')
+  let list=myExams
+  if(examFilter==='upcoming'){
+    list=list.filter(e=>['upcoming','ongoing'].includes(examStateOf(e)))
+    list=list.slice().sort((a,b)=>(a.exam_date+a.start_time).localeCompare(b.exam_date+b.start_time))
+  }else if(examFilter==='past'){
+    list=list.filter(e=>examStateOf(e)==='finished')
+  }
+  if(!list.length){
+    box.innerHTML='<div class="exam-empty">Không có lịch thi nào</div>'; return
+  }
+  box.innerHTML=list.map(e=>{
+    const [yy,mm,dd]=(e.exam_date||'----').split('-')
+    const state=examStateOf(e)
+    let statusHtml
+    if(e.attended_at){
+      const late=lateMinutes(e)
+      if(late!==null && late>ATT_LATE_GRACE_MIN)
+        statusHtml=`<span class="exam-status att late" title="${escapeHtml(e.attended_at)}">⏱ Muộn ${late-ATT_LATE_GRACE_MIN} phút</span>`
+      else
+        statusHtml=`<span class="exam-status att" title="${escapeHtml(e.attended_at)} — trong ${ATT_LATE_GRACE_MIN} phút đầu coi là đúng giờ">✓ Đã điểm danh</span>`
+    }else if(state==='finished'){
+      statusHtml='<span class="exam-status miss">✗ Vắng</span>'
+    }else if(state==='ongoing'){
+      statusHtml='<span class="exam-status pending">🟡 Đang diễn ra</span>'
+    }else{
+      statusHtml='<span class="exam-status pending">🕓 Sắp tới</span>'
+    }
+    const room=e.room?`<span><strong>Phòng:</strong> ${escapeHtml(e.room)}</span>`:''
+    const note=e.note?`<span>${escapeHtml(e.note)}</span>`:''
+    return `<div class="exam-item ${state}">
+      <div class="exam-date">
+        <div class="d">${escapeHtml(dd||'--')}</div>
+        <div class="m">${escapeHtml(MONTH_SHORT[parseInt(mm,10)-1]||'')}</div>
+      </div>
+      <div class="exam-body">
+        <div class="exam-subject">${escapeHtml(e.subject||'—')}</div>
+        <div class="exam-meta">
+          <span><strong>Giờ:</strong> ${escapeHtml((e.start_time||'').slice(0,5))}–${escapeHtml((e.end_time||'').slice(0,5))}</span>
+          ${room}
+          ${note}
+        </div>
+      </div>
+      <div>${statusHtml}</div>
+    </div>`
+  }).join('')
+}
+
+loadMyExams()
+</script>
+</body>
+</html>
